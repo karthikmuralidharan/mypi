@@ -11,3 +11,64 @@ Install with:
   pi install npm:pi-subagents
   pi install npm:pi-ask-user
 <!-- END COMPOUND PI TOOL MAP -->
+
+<!-- BEGIN MYPI REFEREE — hand-authored, see mypi/docs/COHESION.md -->
+## Tool routing
+
+This setup has ~26 extensions that each recommend their own tool. Several
+recommendations contradict each other. This table is the tiebreaker: it wins over
+any tool's own self-description. Pick from it and move on — do not deliberate
+between equivalent tools, and do not try a second tool on the same job unless the
+first actually failed.
+
+| Job | Use | Not |
+| --- | --- | --- |
+| Find files by name, path, or concept | `fffind` | `ls`, `find`, `bash find` |
+| Find text or where a symbol is used | `ffgrep` | `grep`, `bash rg`, `bash grep` |
+| Orient in an unfamiliar project | `project_report` | walking the tree by hand |
+| Understand an unfamiliar file | `module_report`, then `read_symbol` | reading the whole file |
+| Read a known region | `read` with offset/limit | `cat`, `head`, `sed -n` |
+| Match a code pattern structurally | `ast_grep_search` | regex over source |
+| Errors, types, lint | `lens_diagnostics` | running a build to discover type errors |
+| Recall earlier work or decisions | `memory_search`, then `session_search` | re-deriving from scratch |
+| Library or API documentation | `query-docs` (context7) | `web_search` for API details |
+| Current world info | `web_search`, then `web_fetch` | guessing |
+| Output whose size is unknown or large | `ctx_execute` | letting it land in context |
+| Run a command with short known output | `bash` | `ctx_execute` |
+| Delegate parallel work | `Agent` | mixing delegation systems in one task |
+
+**Escalation, not enumeration.** Start at the cheapest tool for the job. Escalate
+only when it actually returned nothing useful. Two tools on the same job means the
+first one failed — say what failed.
+
+**Named contradictions, already resolved.** These extensions disagree in their own
+guidance; the table above settles it, and this list exists so the conflict is not
+re-litigated every session:
+
+- `ctx_execute` vs `bash` — bash for short, known-size output; `ctx_execute` when
+  output is large, unbounded, or needs deriving down to an answer.
+- `ffgrep` vs `ast_grep_search` vs `bash rg` — `ffgrep` for text and usages,
+  `ast_grep_search` only when the query is genuinely structural.
+- `read` vs `module_report`/`read_symbol` — outline first for unfamiliar files,
+  direct `read` when the target region is already known.
+- `memory_search` vs `ctx_search` — `memory_search` for durable cross-session
+  memory; `ctx_search` only for content indexed earlier in this session.
+
+## Guidance precedence
+
+When instructions conflict, higher number wins. Do not average conflicting
+guidance or apply both.
+
+| Priority | Source |
+| --- | --- |
+| 100 | Explicit user instruction in the current conversation |
+| 90 | Project `AGENTS.md` in or above the working directory |
+| 80 | This file (global `AGENTS.md`) — including the routing table above |
+| 70 | An explicitly invoked skill's instructions |
+| 60 | Tool and extension self-description |
+| 1 | Model defaults |
+
+A tool's own description is priority 60. It loses to this file. When a tool's
+description tells you to prefer it over something the routing table assigns
+elsewhere, the routing table wins.
+<!-- END MYPI REFEREE -->
