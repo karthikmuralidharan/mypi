@@ -13,7 +13,7 @@
     "typescript": "^5.9.3"
   },
   "scripts": {
-    "test": "bun test dap.test.ts",
+    "test": "bun test",
     "test:smoke": "bun smoke.ts",
     "typecheck": "tsc --noEmit",
     "check": "npm run typecheck && npm test"
