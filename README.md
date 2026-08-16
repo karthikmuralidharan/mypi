@@ -22,6 +22,7 @@ manifests/
   my-skills.txt               allowlist: my skills vs plugin skills
   agents-skill-lock.json      provenance for third-party ~/.agents/skills
 docs/BOUNDARY.md            the config/data boundary, and the reasoning
+docs/OMP-PORT-PLAN.md       researched oh-my-pi features worth porting
 bootstrap.sh                repo  -> machine  (restore)
 sync.sh                     machine -> repo   (capture)
 ```
