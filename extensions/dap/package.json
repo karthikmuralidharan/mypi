@@ -1,0 +1,14 @@
+{
+  "name": "mypi-dap",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Vendored + fixed DAP debugger extension for pi. Derived from @piex-dev/dap (MIT), itself a Node port of oh-my-pi's dap subsystem (MIT).",
+  "license": "MIT",
+  "type": "module",
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@types/node": "^22.0.0",
+    "typebox": "*",
+    "typescript": "^5.9.3"
+  }
+}
