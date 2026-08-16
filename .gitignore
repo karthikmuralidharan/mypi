@@ -1,0 +1,42 @@
+# ─── The line this repo draws ───────────────────────────────────────────────
+# TRACKED:   declarative configuration + things I authored myself.
+# UNTRACKED: everything pi generates, caches, or accumulates as data.
+# See docs/BOUNDARY.md for the reasoning.
+#
+# Note: plugin-installed skills and agents are never copied into this repo in
+# the first place (sync.sh uses manifests/my-skills.txt as an allowlist), so
+# they need no ignore rules here.
+
+# --- secrets: never, under any circumstance ---
+auth.json
+**/auth.json
+.env
+.env.*
+*.pem
+*.key
+
+# --- data: memory, sessions, history (deliberately not versioned for now) ---
+memory/
+sessions/
+projects-memory/
+pi-hermes-memory/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite*
+*.bak
+*.bak-*
+
+# --- regenerable / machine-specific state ---
+cache/
+node_modules/
+models-store.json
+mcp-cache.json
+run-history.jsonl
+trust.json
+
+# --- tool-managed files (reinstalling the tool rewrites them) ---
+extensions/herdr-agent-state.ts
+
+# --- os noise ---
+.DS_Store

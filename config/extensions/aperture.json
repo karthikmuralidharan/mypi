@@ -1,0 +1,19 @@
+{
+  "$schema": "https://unpkg.com/@aliou/pi-ts-aperture@0.9.1/schema.json",
+  "baseUrl": "http://ai-gateway.tail692491.ts.net",
+  "dedicated": {
+    "enabled": true,
+    "providers": []
+  },
+  "onboardingDone": true,
+  "proxy": {
+    "enabled": false,
+    "upstreamProviders": [
+      {
+        "id": "amazon-bedrock",
+        "name": "AWS Bedrock - Anthropic Models",
+        "shouldCheckGatewayModels": false
+      }
+    ]
+  }
+}

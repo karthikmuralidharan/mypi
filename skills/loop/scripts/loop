@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# loop — repo-agnostic entrypoint for the engineering-loop tooling.
+#
+# Subcommands:
+#   setup            interactive first-time config -> .loop/config.json
+#   find-epic  ...    -> find-epic.sh  (search parent epics to confirm)
+#   sync       ...    -> sync.sh       (GH<->JIRA traceability)
+#   ci-watch   ...    -> ci-watch.sh   (tail CI until it settles)
+#   pr-check   ...    -> pr-check.sh   (rearming gate: unresolved review threads)
+#   ship-gate  ...    -> ship-gate.sh  (ci-watch + pr-check as one call/one exit code)
+#   config           print resolved config
+#
+# The dot-folder .loop/ is fully local (gitignored). Nothing repo-specific
+# is baked into these scripts — the JIRA project/site and GH repo come from
+# config written by `setup`.
+set -euo pipefail
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/common.sh
+source "$HERE/lib/common.sh"
+
+repo_root() { git rev-parse --show-toplevel 2>/dev/null || pwd; }
+
+cmd_setup() {
+    local root; root="$(repo_root)"
+    local dir="$root/.loop"
+    mkdir -p "$dir/state"
+    log "config dir: $dir"
+
+    # 1. GH repo (auto-detect, allow override).
+    local gh_repo; gh_repo="$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || true)"
+    read -r -p "GitHub repo [${gh_repo:-owner/name}]: " ans; gh_repo="${ans:-$gh_repo}"
+    [ -n "$gh_repo" ] || die "GitHub repo is required"
+
+    # 2. Atlassian auth (verify before writing anything).
+    local site="${ATLASSIAN_SITE:-swicloud.atlassian.net}"
+    read -r -p "Atlassian site [$site]: " ans; site="${ans:-$site}"
+    JIRA_SITE="$site"; JIRA_API="https://${site}/rest/api/3"; export JIRA_SITE JIRA_API
+    local who; who="$(jira_curl GET /myself | jq -r '.displayName // empty')" || true
+    [ -n "$who" ] || die "Atlassian auth failed for $site (check ATLASSIAN_EMAIL/ATLASSIAN_API_TOKEN)"
+    log "Atlassian auth OK as: $who"
+
+    # 3. JIRA project key + a confirming search so a typo is caught now.
+    local proj=""
+    while [ -z "$proj" ]; do
+        read -r -p "JIRA project key (e.g. SWONE): " proj
+        if [ -n "$proj" ]; then
+            local name; name="$(JIRA_PROJECT="$proj" jira_curl GET "/project/$proj" 2>/dev/null | jq -r '.name // empty' || true)"
+            if [ -z "$name" ]; then warn "project '$proj' not found/visible — try again"; proj=""; else log "project $proj = $name"; fi
+        fi
+    done
+
+    # 4. Write config (no secrets, no pinned epic — epics are chosen per run).
+    jq -n --arg repo "$gh_repo" --arg site "$site" --arg proj "$proj" \
+        '{gh:{repo:$repo}, jira:{site:$site, project:$proj}, epicPolicy:"search-per-run"}' \
+        > "$dir/config.json"
+    log "wrote $dir/config.json"
+
+    # 5. Ensure the whole dot-folder is gitignored (local-only choice).
+    local gi="$root/.gitignore"
+    if ! grep -qxF ".loop/" "$gi" 2>/dev/null; then
+        printf '\n# loop local config/state (repo-agnostic tooling)\n.loop/\n' >> "$gi"
+        log "added .loop/ to .gitignore"
+    fi
+
+    log "setup complete. Try: scripts/loop/loop find-epic \"<keywords>\""
+}
+
+cmd_config() {
+    require_config
+    jq . "$_cfg"
+    echo "resolved: site=$JIRA_SITE project=$JIRA_PROJECT gh=$(cfg '.gh.repo')"
+}
+
+sub="${1:-}"; shift || true
+case "$sub" in
+    setup)     cmd_setup "$@";;
+    config)    cmd_config "$@";;
+    find-epic) exec "$HERE/find-epic.sh" "$@";;
+    sync)      exec "$HERE/sync.sh" "$@";;
+    ci-watch)  exec "$HERE/ci-watch.sh" "$@";;
+    pr-check)  exec "$HERE/pr-check.sh" "$@";;
+    ship-gate) exec "$HERE/ship-gate.sh" "$@";;
+    ""|-h|--help)
+        sed -n '2,19p' "$HERE/loop";;
+    *) die "unknown subcommand: $sub (try: setup, find-epic, sync, ci-watch, pr-check, ship-gate, config)";;
+esac
