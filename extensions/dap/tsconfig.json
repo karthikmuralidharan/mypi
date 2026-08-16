@@ -3,8 +3,13 @@
     "target": "ES2024",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "lib": ["ES2024"],
-    "types": ["node"],
+    "lib": [
+      "ES2024"
+    ],
+    "types": [
+      "node",
+      "bun"
+    ],
     "strict": true,
     "noEmit": true,
     "skipLibCheck": true,
@@ -12,5 +17,7 @@
     "resolveJsonModule": true,
     "verbatimModuleSyntax": true
   },
-  "include": ["*.ts"]
+  "include": [
+    "*.ts"
+  ]
 }

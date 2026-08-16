@@ -126,6 +126,44 @@ async function connectWithRetry(
  * Scrape the listening address an adapter prints on stdout.
  * `dlv dap` emits: `DAP server listening at: 127.0.0.1:51272`
  */
+/**
+ * Parse a listening address out of accumulated adapter stdout.
+ *
+ * Exported for unit testing: this is the one piece of transport logic with real
+ * edge cases (IPv6 in two spellings, unix socket paths, partially-received
+ * lines), so it is a pure function rather than a closure.
+ *
+ * Returns null when no complete address is present yet, so the caller can keep
+ * accumulating instead of committing to a wrong parse.
+ */
+export function parseAnnouncedAddress(
+  text: string,
+): { host: string; port: number } | null {
+  // Capture the whole address token, then split on the LAST colon. Adapters
+  // announce several shapes: `127.0.0.1:51272`, `::1:12345`, `[::1]:12345`.
+  // A host-then-port regex silently fails on the bare IPv6 form.
+  const m = /listening (?:at|on):?\s*(\S+)/i.exec(text);
+  if (!m) return null;
+  const token = m[1];
+  const idx = token.lastIndexOf(":");
+  if (idx <= 0) return null; // unix socket path, or line not yet complete
+  const port = Number(token.slice(idx + 1));
+  if (!Number.isInteger(port) || port <= 0 || port > 65535) return null;
+  const host = token.slice(0, idx).replace(/^\[|\]$/g, "");
+  return { host: host || "127.0.0.1", port };
+}
+
+/**
+ * Replace every `${port}` placeholder in adapter args.
+ * Exported for unit testing; used by `tcp` mode where we own the port.
+ */
+export function substitutePort(
+  args: readonly string[],
+  port: number,
+): string[] {
+  return args.map((a) => a.replaceAll("${port}", String(port)));
+}
+
 function waitForAnnouncedAddress(
   proc: ChildProcess,
   timeoutMs: number,
@@ -142,18 +180,8 @@ function waitForAnnouncedAddress(
     };
     const onData = (chunk: Buffer) => {
       seen += chunk.toString();
-      // Capture the whole address token, then split on the LAST colon. Adapters
-      // announce several shapes: `127.0.0.1:51272`, `::1:12345`, `[::1]:12345`.
-      // A host-then-port regex silently fails on the bare IPv6 form.
-      const m = /listening (?:at|on):?\s*(\S+)/i.exec(seen);
-      if (!m) return;
-      const token = m[1];
-      const idx = token.lastIndexOf(":");
-      if (idx <= 0) return; // unix socket path, or line not yet complete
-      const port = Number(token.slice(idx + 1));
-      if (!Number.isInteger(port) || port <= 0) return;
-      const host = token.slice(0, idx).replace(/^\[|\]$/g, "");
-      finish(() => resolve({ host: host || "127.0.0.1", port }));
+      const addr = parseAnnouncedAddress(seen);
+      if (addr) finish(() => resolve(addr));
     };
     const timer = setTimeout(
       () =>
@@ -240,9 +268,7 @@ export class DapClient {
     // `tcp`: we own the port and inject it via a ${port} placeholder in args.
     const port = mode === "tcp" ? await reserveFreePort() : undefined;
     const args =
-      port === undefined
-        ? adapter.args
-        : adapter.args.map((a) => a.replaceAll("${port}", String(port)));
+      port === undefined ? adapter.args : substitutePort(adapter.args, port);
 
     const proc = spawn(cmd, args, {
       cwd,
