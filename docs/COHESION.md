@@ -72,6 +72,16 @@ One tool per job, chosen on these grounds:
   execution, steering, worktree isolation, model override). Not a quality verdict
   on the others; picking *one* is the point.
 
+  This is a routing rule about which tool to *reach for*, not a licence to
+  uninstall the others — a distinction this bullet originally failed to make, and
+  which nearly caused real damage. Acting on it, the plan was to retire
+  `@tintinweb/pi-subagents`; grepping the live tool descriptions to their packages
+  showed that package is precisely what registers `Agent`. Removing it would have
+  deleted the designated delegation system along with dispatch for 30 agent
+  definitions and 13 skills. See "Delegation systems — verified tool ownership" in
+  `config/AGENTS.md` for the verified mapping. Confirm which package owns a tool
+  before removing anything that sounds redundant.
+
 ## Web tooling consolidated
 
 Started as three overlapping tools, ended as two with no overlap.
