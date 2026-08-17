@@ -49,6 +49,25 @@ echo "==> config -> $A"
 for f in settings.json mcp.json AGENTS.md hermes-memory-config.json; do
   install_file "$REPO/config/$f" "$A/$f"
 done
+
+# hermes does no tilde expansion, so childExtensionPaths must be absolute. Re-root
+# any committed path onto THIS machine's agent dir, otherwise a restore under a
+# different username silently points at a nonexistent provider extension and the
+# memory auto-review fails with "No API provider registered".
+if [[ -f "$A/hermes-memory-config.json" ]] && command -v jq >/dev/null 2>&1; then
+  tmp="$(mktemp)"
+  if jq --arg base "$A" '
+        if .childExtensionPaths then
+          .childExtensionPaths |= map(sub(".*/\\.pi/agent/"; $base + "/"))
+        else . end
+      ' "$A/hermes-memory-config.json" >"$tmp" 2>/dev/null; then
+    mv "$tmp" "$A/hermes-memory-config.json"
+    echo "    re-rooted childExtensionPaths onto $A"
+  else
+    rm -f "$tmp"
+    echo "    WARN: could not re-root childExtensionPaths; check it by hand" >&2
+  fi
+fi
 install_file "$REPO/config/npm/package.json" "$A/npm/package.json"
 install_file "$REPO/config/npm/package-lock.json" "$A/npm/package-lock.json"
 

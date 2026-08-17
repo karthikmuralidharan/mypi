@@ -3,5 +3,10 @@
   "memoryCharLimit": 12000,
   "projectCharLimit": 12000,
   "autoConsolidate": true,
-  "memoryOverflowStrategy": "auto-consolidate"
+  "memoryOverflowStrategy": "auto-consolidate",
+  "llmModelOverride": "aperture/us.anthropic.claude-haiku-4-5-20251001-v1:0",
+  "llmThinkingOverride": "off",
+  "childExtensionPaths": [
+    "/Users/karthik.muralidharan/.pi/agent/npm/node_modules/@aliou/pi-ts-aperture/extensions/aperture/index.ts"
+  ]
 }
