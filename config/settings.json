@@ -13,7 +13,6 @@
     "git:github.com/pasky/chrome-cdp-skill@v1.0.2",
     "npm:pi-karpathy-guidelines",
     "npm:pi-autoresearch",
-    "npm:@tintinweb/pi-subagents",
     "npm:@juicesharp/rpiv-advisor",
     "npm:@juicesharp/rpiv-i18n",
     "npm:@juicesharp/rpiv-args",
@@ -21,14 +20,13 @@
     "npm:pi-cmux",
     "npm:@juicesharp/rpiv-voice",
     "npm:@aliou/pi-ts-aperture",
-    "npm:@quintinshaw/pi-dynamic-workflows",
     "npm:pi-mcp-adapter",
     "npm:@ff-labs/pi-fff",
     "npm:context-mode",
-    "npm:pi-herdr-subagents"
+    "npm:pi-subagents"
   ],
   "enableInstallTelemetry": false,
-  "defaultThinkingLevel": "high",
+  "defaultThinkingLevel": "medium",
   "theme": "dark",
   "skills": [
     "-skills/nri-us-tax-filing/SKILL.md",
