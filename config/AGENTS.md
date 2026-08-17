@@ -35,7 +35,8 @@ first actually failed.
 | Errors, types, lint | `lens_diagnostics` (see cadence below) | running a build to discover type errors |
 | Recall earlier work or decisions | `memory_search`, then `session_search` | re-deriving from scratch |
 | Library or API documentation | `query-docs` (context7) | `web_search` for API details |
-| Current world info | `web_search`, then `web_fetch` | guessing |
+| A question needing the live web | `web_research` | `web_search` (no provider key — non-functional) |
+| A specific URL you already have | `web_fetch`, or `ctx_fetch_and_index` when the page is large | `web_research` for a known URL |
 | Output whose size is unknown or large | `ctx_execute` | letting it land in context |
 | Run a command with short known output | `bash` | `ctx_execute` |
 | Delegate parallel work | `Agent` | mixing delegation systems in one task |
@@ -94,6 +95,13 @@ re-litigated every session:
   direct `read` when the target region is already known.
 - `memory_search` vs `ctx_search` — `memory_search` for durable cross-session
   memory; `ctx_search` only for content indexed earlier in this session.
+- `web_research` vs `web_search` vs `web_fetch` — `web_research` (OpenAI
+  web_search via the aperture gateway) returns a synthesized, cited answer and is
+  the default for "what is the current X". `web_search` from rpiv-web-tools has no
+  provider API key configured and is therefore dead — do not route to it. Use
+  `web_fetch` only for a URL you already hold, and be aware it returns the raw
+  page including navigation chrome; for anything large prefer
+  `ctx_fetch_and_index` and then `ctx_search`.
 
 ## Guidance precedence
 

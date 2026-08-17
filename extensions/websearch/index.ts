@@ -105,6 +105,10 @@ export default function webResearchExtension(pi: ExtensionAPI) {
 			const query = String((params as { query?: unknown }).query ?? "").trim();
 			if (!query) throw new Error("web_research: 'query' is required.");
 
+			// Build the endpoint via the URL constructor rather than string
+			// interpolation, and validate the configured host first.
+			const endpoint = new URL("/v1/responses", assertGatewayUrl(cfg.baseUrl));
+
 			// Own timeout, but still honour the caller's cancellation.
 			const ac = new AbortController();
 			const timer = setTimeout(() => ac.abort(), cfg.timeoutMs);
@@ -112,7 +116,7 @@ export default function webResearchExtension(pi: ExtensionAPI) {
 			signal?.addEventListener("abort", onAbort, { once: true });
 
 			try {
-				const res = await fetch(`${cfg.baseUrl}/v1/responses`, {
+				const res = await fetch(endpoint, {
 					method: "POST",
 					headers: { "content-type": "application/json" },
 					body: JSON.stringify({
