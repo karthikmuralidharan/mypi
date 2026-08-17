@@ -64,7 +64,29 @@ shopt -s nullglob
 for f in "$REPO"/extensions/*.ts "$REPO"/extensions/*.js; do
   install_file "$f" "$A/extensions/$(basename "$f")"
 done
+# Directory extensions (pi loads extensions/<name>/index.ts). node_modules is a
+# dev-only type dependency and is gitignored, so it is never copied.
+for d in "$REPO"/extensions/*/; do
+  name="$(basename "$d")"
+  [[ -f "$d/index.ts" ]] || continue
+  dest="$A/extensions/$name"
+  if [[ -e "$dest" && $FORCE -eq 0 && ! -e "$dest.pre-bootstrap" ]]; then
+    cp -R "$dest" "$dest.pre-bootstrap"
+    echo "    backed up $name -> $name.pre-bootstrap"
+  fi
+  rm -rf "$dest"
+  mkdir -p "$dest"
+  (cd "$d" && tar cf - --exclude node_modules .) | (cd "$dest" && tar xf -)
+  echo "    $dest/ (directory extension)"
+done
 shopt -u nullglob
+
+# Debug adapters for the vendored dap extension. Idempotent; skipped with
+# --config since it downloads and builds.
+if [[ $CONFIG_ONLY -eq 0 && -x "$REPO/scripts/install-dap-adapters.sh" ]]; then
+  echo "==> debug adapters"
+  "$REPO/scripts/install-dap-adapters.sh" || echo "    WARN: adapter install reported problems" >&2
+fi
 
 echo "==> my skills"
 while read -r s; do

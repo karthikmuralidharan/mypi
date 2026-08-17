@@ -24,18 +24,57 @@ first actually failed.
 | Job | Use | Not |
 | --- | --- | --- |
 | Find files by name, path, or concept | `fffind` | `ls`, `find`, `bash find` |
-| Find text or where a symbol is used | `ffgrep` | `grep`, `bash rg`, `bash grep` |
+| Find text, or a symbol in an unindexed language | `ffgrep` | `grep`, `bash rg`, `bash grep` |
+| **Find where a symbol is defined or used** | `lsp_navigation` definition / references / implementation | `ffgrep` for a symbol the LSP knows |
+| **Trace who calls what** | `lsp_navigation` call hierarchy | grepping for the function name |
+| **Rename a symbol or move a file** | `lsp_navigation` `rename` / `rename_file` with `apply` | hand-editing each call site |
 | Orient in an unfamiliar project | `project_report` | walking the tree by hand |
 | Understand an unfamiliar file | `module_report`, then `read_symbol` | reading the whole file |
 | Read a known region | `read` with offset/limit | `cat`, `head`, `sed -n` |
 | Match a code pattern structurally | `ast_grep_search` | regex over source |
-| Errors, types, lint | `lens_diagnostics` | running a build to discover type errors |
+| Errors, types, lint | `lens_diagnostics` (see cadence below) | running a build to discover type errors |
 | Recall earlier work or decisions | `memory_search`, then `session_search` | re-deriving from scratch |
 | Library or API documentation | `query-docs` (context7) | `web_search` for API details |
 | Current world info | `web_search`, then `web_fetch` | guessing |
 | Output whose size is unknown or large | `ctx_execute` | letting it land in context |
 | Run a command with short known output | `bash` | `ctx_execute` |
 | Delegate parallel work | `Agent` | mixing delegation systems in one task |
+
+**Prefer the LSP for navigation, comprehension, and mechanical refactors.** It
+answers from a type-aware graph, so `references` finds actual usages while a grep
+finds every string that merely looks like one — including comments, unrelated
+same-named members, and none of the aliased imports. `rename` with `apply` edits
+every real call site atomically and re-syncs the servers afterwards, which
+hand-editing does not. Use `ffgrep` when the LSP cannot help: an unsupported
+language, config and markup files, log output, or a plain text search.
+
+`lsp_navigation` and the `ast_grep_*` tools are situational and inactive by
+default. Activate them **once per session** with `pi_lens_activate_tools`, not
+repeatedly.
+
+## Diagnostics cadence
+
+Diagnostic output is verbose and mostly repeats what the previous run said, so
+running it after every edit is the single easiest way to waste a context window.
+Batch it instead.
+
+| When | Call | Cost |
+| --- | --- | --- |
+| After a batch of related edits | `lens_diagnostics mode=delta` | cheap — cache read, this turn only |
+| Before saying work is done, or before a commit | `lens_diagnostics mode=all` | cheap — cache read, every file edited this session |
+| Auditing an untouched codebase | `lens_diagnostics mode=full` | **expensive** — project-wide scan; rare and deliberate only |
+| One specific file, right now | `lsp_diagnostics path=<file>` | moderate |
+
+Rules:
+
+- **Do not run diagnostics after every single edit.** Finish a coherent group of
+  changes first, then check once.
+- pi-lens already runs its own post-write pipeline and surfaces blocking errors
+  automatically. A clean turn-end means clean; do not re-verify by polling.
+- Never scan a whole directory or use `mode=full` to check a file you just
+  touched — `mode=delta` already covers it.
+- A build or test run is not a type checker. Reach for diagnostics first; run the
+  build to verify behaviour, not to discover type errors.
 
 **Escalation, not enumeration.** Start at the cheapest tool for the job. Escalate
 only when it actually returned nothing useful. Two tools on the same job means the
@@ -47,8 +86,10 @@ re-litigated every session:
 
 - `ctx_execute` vs `bash` — bash for short, known-size output; `ctx_execute` when
   output is large, unbounded, or needs deriving down to an answer.
-- `ffgrep` vs `ast_grep_search` vs `bash rg` — `ffgrep` for text and usages,
-  `ast_grep_search` only when the query is genuinely structural.
+- `ffgrep` vs `lsp_navigation` vs `ast_grep_search` vs `bash rg` — `lsp_navigation`
+  for symbols the language server understands, `ffgrep` for text and for languages
+  or file types it does not, `ast_grep_search` only when the query is genuinely
+  structural.
 - `read` vs `module_report`/`read_symbol` — outline first for unfamiliar files,
   direct `read` when the target region is already known.
 - `memory_search` vs `ctx_search` — `memory_search` for durable cross-session

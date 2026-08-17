@@ -14,11 +14,18 @@
  */
 
 import { EventEmitter } from "node:events";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import { PassThrough } from "node:stream";
 import { describe, expect, test } from "bun:test";
 import type { ChildProcess } from "node:child_process";
 import { DapClient, parseAnnouncedAddress, substitutePort } from "./client";
-import { getAdapterConfigs, resolveAdapter } from "./config";
+import {
+	getAdapterConfigs,
+	clearAdapterConfigCache,
+	resolveAdapter,
+} from "./config";
 import type { DapResolvedAdapter } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -109,14 +116,30 @@ describe("substitutePort", () => {
 // ---------------------------------------------------------------------------
 
 describe("adapter connectMode normalisation", () => {
+	// Isolate from real config. getAdapterConfigs() now searches
+	// ~/.pi/agent/dap.json and <cwd>/.dap.json, so without an empty cwd and a
+	// redirected user path these assertions would silently depend on whatever this
+	// machine happens to have configured.
+	const emptyDir = fs.mkdtempSync(path.join(os.tmpdir(), "dap-cfg-"));
+	const configs = () => {
+		process.env.PI_DAP_CONFIG = path.join(emptyDir, "absent.json");
+		clearAdapterConfigCache();
+		try {
+			return getAdapterConfigs(emptyDir);
+		} finally {
+			delete process.env.PI_DAP_CONFIG;
+			clearAdapterConfigCache();
+		}
+	};
+
 	test("dlv keeps socket mode instead of degrading to stdio", () => {
 		// Upstream whitelisted only "socket" here but then never implemented it;
 		// any other value fell through to "stdio" and surfaced as an init timeout.
-		expect(getAdapterConfigs()["dlv"]?.connectMode).toBe("socket");
+		expect(configs()["dlv"]?.connectMode).toBe("socket");
 	});
 
 	test("js-debug is configured for tcp, not stdio", () => {
-		expect(getAdapterConfigs()["js-debug-adapter"]?.connectMode).toBe("tcp");
+		expect(configs()["js-debug-adapter"]?.connectMode).toBe("tcp");
 	});
 
 	test("stdio adapters report stdio once resolved", () => {
@@ -127,7 +150,7 @@ describe("adapter connectMode normalisation", () => {
 
 	test("every declared mode is one the client implements", () => {
 		const implemented = new Set(["stdio", "socket", "tcp"]);
-		for (const [name, cfg] of Object.entries(getAdapterConfigs())) {
+		for (const [name, cfg] of Object.entries(configs())) {
 			const mode = cfg.connectMode ?? "stdio";
 			expect(
 				implemented.has(mode),

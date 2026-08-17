@@ -5,7 +5,7 @@
 
 import * as path from "node:path";
 import * as fs from "node:fs";
-import * as cp from "node:child_process";
+import * as os from "node:os";
 import DEFAULTS from "./defaults.json" with { type: "json" };
 import type { DapAdapterConfig, DapResolvedAdapter } from "./types";
 
@@ -174,11 +174,110 @@ function getDefaults(): Record<string, DapAdapterConfig> {
 const DEFAULT_ADAPTERS = getDefaults();
 
 // ---------------------------------------------------------------------------
+// User configuration layer
+//
+// LOCAL ADDITION: upstream @piex-dev/dap dropped oh-my-pi's entire user-config
+// layer — getAdapterConfigs() returned the bundled defaults and nothing else.
+// So adding a language, or fixing a wrong command (upstream invokes bare
+// `python`, which does not exist on macOS/homebrew), required editing files
+// inside node_modules that any reinstall wipes.
+//
+// Precedence, low to high: bundled defaults -> user config -> project config.
+// Merging is per-adapter and shallow, so overriding one field does not require
+// redeclaring the whole adapter.
+// ---------------------------------------------------------------------------
+
+/** Explicit path override. Also how tests point at a fixture config. */
+const CONFIG_PATH_ENV = "PI_DAP_CONFIG";
+
+function configSearchPaths(cwd: string): string[] {
+  const explicit = process.env[CONFIG_PATH_ENV];
+  const userPaths = explicit
+    ? [explicit]
+    : [path.join(os.homedir(), ".pi", "agent", "dap.json")];
+  // Project config last so a repo can override the user's global choice.
+  return [
+    ...userPaths,
+    path.join(cwd, ".dap.json"),
+    path.join(cwd, "dap.json"),
+  ];
+}
+
+/**
+ * Extract the adapter map from a parsed config file.
+ * Accepts both `{ adapters: {...} }` and a bare `{ "<name>": {...} }` map, since
+ * both shapes are natural to write and guessing wrong is a silent no-op.
+ */
+export function extractAdapterMap(parsed: unknown): Record<string, unknown> {
+  if (!isRecord(parsed)) return {};
+  if (isRecord(parsed.adapters)) return parsed.adapters;
+  return parsed;
+}
+
+/**
+ * Shallow-merge an overlay over a base adapter map.
+ *
+ * An overlay entry for a known adapter patches it; an entry for an unknown
+ * adapter defines a new one and must therefore carry `command`. Invalid entries
+ * are skipped rather than throwing: a typo in one adapter must not disable the
+ * whole debugger.
+ */
+export function mergeAdapterConfigs(
+  base: Record<string, DapAdapterConfig>,
+  overlay: Record<string, unknown>,
+): Record<string, DapAdapterConfig> {
+  const out: Record<string, DapAdapterConfig> = { ...base };
+  for (const [name, patch] of Object.entries(overlay)) {
+    if (!isRecord(patch)) continue;
+    const existing = out[name];
+    const merged = normalizeAdapterConfig(
+      existing ? { ...existing, ...patch } : patch,
+    );
+    if (merged) out[name] = merged;
+  }
+  return out;
+}
+
+function readConfigFile(file: string): Record<string, unknown> {
+  try {
+    if (!fs.existsSync(file)) return {};
+    return extractAdapterMap(JSON.parse(fs.readFileSync(file, "utf8")));
+  } catch (err) {
+    // A malformed config must not break debugging; report and carry on.
+    process.stderr.write(
+      `dap: ignoring unreadable config ${file}: ${err instanceof Error ? err.message : String(err)}\n`,
+    );
+    return {};
+  }
+}
+
+/** Config depends on cwd, so cache per cwd. Cleared by clearAdapterConfigCache. */
+const configCache = new Map<string, Record<string, DapAdapterConfig>>();
+
+/** Test hook: drop cached merges after changing config files or env. */
+export function clearAdapterConfigCache(): void {
+  configCache.clear();
+}
+
+function loadAdapterConfigs(cwd: string): Record<string, DapAdapterConfig> {
+  const cached = configCache.get(cwd);
+  if (cached) return cached;
+  let merged: Record<string, DapAdapterConfig> = { ...DEFAULT_ADAPTERS };
+  for (const file of configSearchPaths(cwd)) {
+    merged = mergeAdapterConfigs(merged, readConfigFile(file));
+  }
+  configCache.set(cwd, merged);
+  return merged;
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
-export function getAdapterConfigs(): Record<string, DapAdapterConfig> {
-  return { ...DEFAULT_ADAPTERS };
+export function getAdapterConfigs(
+  cwd: string = process.cwd(),
+): Record<string, DapAdapterConfig> {
+  return { ...loadAdapterConfigs(cwd) };
 }
 
 export function normalizeCommandForCwd(command: string, cwd: string): string {
@@ -198,7 +297,7 @@ export function resolveAdapter(
   adapterName: string,
   cwd: string,
 ): DapResolvedAdapter | null {
-  const config = DEFAULT_ADAPTERS[adapterName];
+  const config = loadAdapterConfigs(cwd)[adapterName];
   if (!config) return null;
   const resolvedCommand = resolveCommand(
     normalizeCommandForCwd(config.command, cwd),
