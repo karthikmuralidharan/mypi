@@ -15,9 +15,13 @@ AGENTS_HOME="$HOME/.agents"
 }
 
 echo "==> config"
-for f in settings.json mcp.json AGENTS.md; do
-  cp "$A/$f" "$REPO/config/$f"
-  echo "    config/$f"
+for f in settings.json mcp.json AGENTS.md hermes-memory-config.json; do
+  if [[ -f "$A/$f" ]]; then
+    cp "$A/$f" "$REPO/config/$f"
+    echo "    config/$f"
+  else
+    echo "    skip $f (not present)"
+  fi
 done
 
 echo "==> npm manifests"

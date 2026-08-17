@@ -46,7 +46,7 @@ install_file() {
 }
 
 echo "==> config -> $A"
-for f in settings.json mcp.json AGENTS.md; do
+for f in settings.json mcp.json AGENTS.md hermes-memory-config.json; do
   install_file "$REPO/config/$f" "$A/$f"
 done
 install_file "$REPO/config/npm/package.json" "$A/npm/package.json"
