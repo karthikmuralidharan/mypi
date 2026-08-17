@@ -16,7 +16,6 @@
     "npm:@tintinweb/pi-subagents",
     "npm:@juicesharp/rpiv-advisor",
     "npm:@juicesharp/rpiv-i18n",
-    "npm:@juicesharp/rpiv-web-tools",
     "npm:@juicesharp/rpiv-args",
     "npm:@juicesharp/rpiv-workflow",
     "npm:pi-cmux",

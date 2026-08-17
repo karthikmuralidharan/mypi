@@ -10,7 +10,6 @@
     "@juicesharp/rpiv-i18n": "^2.6.0",
     "@juicesharp/rpiv-todo": "^2.6.0",
     "@juicesharp/rpiv-voice": "^2.6.0",
-    "@juicesharp/rpiv-web-tools": "^2.6.0",
     "@juicesharp/rpiv-workflow": "^2.6.0",
     "@plannotator/pi-extension": "^0.27.3",
     "@quintinshaw/pi-dynamic-workflows": "^3.5.1",
