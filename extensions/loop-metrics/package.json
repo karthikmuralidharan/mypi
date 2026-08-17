@@ -6,7 +6,7 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "test": "bun test",
+    "test": "node --test *.test.ts",
     "typecheck": "tsc --noEmit",
     "check": "npm run typecheck && npm test"
   },
