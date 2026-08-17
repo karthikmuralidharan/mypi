@@ -69,6 +69,17 @@ export function loadResearchConfig(
 export default function webResearchExtension(pi: ExtensionAPI) {
 	pi.registerTool({
 		name: "web_research",
+		label: "Web research",
+		// Without promptSnippet, custom tools are omitted from the "Available tools"
+		// section of the default system prompt — i.e. the tool would exist but never
+		// be advertised.
+		promptSnippet:
+			"web_research: ask a question and get a synthesized answer from the live web with source URLs",
+		promptGuidelines: [
+			"Use web_research when you want an ANSWER from the live web (current versions, recent events, state of X). It searches and reads for you in one call.",
+			"Use web_fetch when you already have the exact URL, and query-docs (context7) for library API documentation.",
+			"Always check the Sources list web_research returns. Some sites block the fetcher, and an answer with no sources is unverified — say so rather than presenting it as fact.",
+		],
 		description:
 			"Answer a question from the live web and return a synthesized answer plus the source URLs it cited, " +
 			"using OpenAI's built-in web_search. Prefer this over web_search when you want an ANSWER (current " +
@@ -83,7 +94,6 @@ export default function webResearchExtension(pi: ExtensionAPI) {
 					"(version, date range, 'cite the official docs').",
 			}),
 		}),
-		approval: () => "read",
 		async execute(_toolCallId, params, signal) {
 			const cfg = loadResearchConfig();
 			if (!cfg.baseUrl) {

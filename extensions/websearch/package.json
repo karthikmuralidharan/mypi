@@ -1,14 +1,20 @@
 {
-  "name": "pi-websearch",
-  "version": "1.0.0",
-  "description": "Web search tool using OpenAI's Responses API",
+  "name": "mypi-websearch",
+  "private": true,
+  "version": "0.1.0",
+  "description": "web_research tool for pi — cited web answers via OpenAI's built-in web_search on the Responses API, routed through the aperture gateway.",
+  "license": "MIT",
   "type": "module",
-  "main": "index.ts",
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm test"
+  },
   "devDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@types/bun": "*",
     "@types/node": "^22.0.0",
-    "typescript": "^5.0.0"
-  }
-  "dependencies": {
-    "@earendil-works/pi-coding-agent": "file:../.."
+    "typebox": "*",
+    "typescript": "^5"
   }
 }
