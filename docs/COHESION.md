@@ -72,6 +72,54 @@ One tool per job, chosen on these grounds:
   execution, steering, worktree isolation, model override). Not a quality verdict
   on the others; picking *one* is the point.
 
+## Web tooling consolidated
+
+Started as three overlapping tools, ended as two with no overlap.
+
+`rpiv-web-tools` was removed. Its `web_search` needed a provider API key that was
+never configured, so it could not return results at all — and a dead tool that
+looks usable is worse than no tool, since it silently absorbs routing decisions.
+Its `web_fetch` worked but returned raw pages including navigation chrome: 21KB
+to answer a question that a shaped call answered in 226 bytes.
+
+Replaced by one extension owning both jobs, `extensions/websearch/`:
+
+| Job | Tool |
+| --- | --- |
+| A question | `web_research` — OpenAI's built-in web_search via the aperture gateway; returns a synthesized answer plus cited URLs |
+| A URL you hold | `web_fetch` — chrome stripped, entities decoded, length capped with an explicit truncation note |
+| Large or many pages | `ctx_fetch_and_index` then `ctx_search` — the page never lands in context whole |
+
+Measured: `web_research` 10,222-byte payload → 226 bytes returned (97.8%);
+`web_fetch` 145,410 HTML chars → 10,071 (93.1%).
+
+No OAuth was needed and none was added. pi's ChatGPT Plus/Pro OAuth grants Codex
+*models*, not a search tool, whereas the gateway already exposes `/v1/responses`
+with `web_search` and needs no credential on the tailnet.
+
+### Retired: the `web-search-researcher` agent
+
+Deleted from `~/.pi/agent/agents/` (64 → 63) with its `.rpiv-managed.json` entry
+removed. Recorded here because `agents/` is plugin-generated and therefore not
+versioned, so the reasoning has no other home.
+
+It shipped *with* `rpiv-web-tools` and referenced `ext:rpiv-web-tools/web_search`,
+so removing that package left it pointing at tools that no longer exist. Three
+facts made deletion the right call over repair:
+
+1. **Nothing dispatched it.** No skill referenced it by name — only the file
+   itself and the manifest.
+2. **Its job is now one tool call.** The agent existed to keep a large
+   search-then-fetch cycle out of the main context; `web_research` returns a cited
+   answer directly, so the subagent hop bought nothing.
+3. **Its owning package is gone**, so no plugin will recreate it. Deletion is
+   durable rather than drift.
+
+A copy is kept under `~/mypi-memory-backup-*/retired-agents/`. If a web-research
+subagent is ever wanted again, write it against `web_research` with bare tool
+names — not `ext:` references, which are resolver-specific and would not survive
+a change of subagent implementation.
+
 Escalation is explicit: cheapest tool first, escalate only on actual failure. Two
 tools on one job means the first failed and that should be stated.
 
