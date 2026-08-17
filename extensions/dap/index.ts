@@ -41,10 +41,41 @@ import { isEnoent } from "./utils";
 
 // ── Singleton ──────────────────────────────────────────────────
 
-let _manager: DapSessionManager | null = null;
-function mgr(): DapSessionManager {
-  if (!_manager) _manager = new DapSessionManager();
-  return _manager;
+/**
+ * The manager is held on globalThis, not in a module-level variable.
+ *
+ * WHY: pi can replace an extension runtime between agent runs, which produces a
+ * fresh module instance. A module-level `let` is lost at that point while the
+ * spawned adapter processes keep running — verified empirically: after a new user
+ * turn, `sessions` reported none while `ps` still showed the debugpy adapter,
+ * launcher and debuggee alive and suspended at the breakpoint. session_shutdown
+ * had NOT fired (it would have terminated them), so this is module
+ * re-instantiation, not teardown.
+ *
+ * Keying off globalThis makes a debug session survive across turns for the life
+ * of the pi process, which is what interactive debugging requires: launch, look,
+ * then decide what to do next. #ensureSlot already discards a stale session whose
+ * client is no longer alive, so a leftover entry cannot wedge a later launch.
+ */
+const MANAGER_KEY = "__mypi_dap_session_manager__";
+
+type ManagerHolder = { [MANAGER_KEY]?: DapSessionManager };
+
+/** Exported for tests only — singleton.test.ts asserts cross-instance sharing. */
+export function mgr(): DapSessionManager {
+  const holder = globalThis as unknown as ManagerHolder;
+  let existing = holder[MANAGER_KEY];
+  if (!existing) {
+    existing = new DapSessionManager();
+    holder[MANAGER_KEY] = existing;
+  }
+  return existing;
+}
+
+/** Exported for tests only — see mgr(). */
+export function clearManager(): void {
+  const holder = globalThis as unknown as ManagerHolder;
+  delete holder[MANAGER_KEY];
 }
 
 // ── Helpers ────────────────────────────────────────────────────
@@ -823,6 +854,6 @@ custom_request`,
       /* best effort */
     }
     mgr().dispose();
-    _manager = null;
+    clearManager();
   });
 }
