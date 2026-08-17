@@ -83,8 +83,9 @@ shopt -s nullglob
 for f in "$REPO"/extensions/*.ts "$REPO"/extensions/*.js; do
   install_file "$f" "$A/extensions/$(basename "$f")"
 done
-# Directory extensions (pi loads extensions/<name>/index.ts). node_modules is a
-# dev-only type dependency and is gitignored, so it is never copied.
+# Directory extensions (pi loads extensions/<name>/index.ts). Install RUNTIME
+# files only: node_modules is a dev-only type dependency, and the test files
+# import bun:test which pi cannot resolve — neither belongs in the live dir.
 for d in "$REPO"/extensions/*/; do
   name="$(basename "$d")"
   [[ -f "$d/index.ts" ]] || continue
@@ -95,8 +96,11 @@ for d in "$REPO"/extensions/*/; do
   fi
   rm -rf "$dest"
   mkdir -p "$dest"
-  (cd "$d" && tar cf - --exclude node_modules .) | (cd "$dest" && tar xf -)
-  echo "    $dest/ (directory extension)"
+  (cd "$d" && tar cf - \
+    --exclude node_modules --exclude '*.test.ts' --exclude smoke.ts \
+    --exclude fixtures --exclude tsconfig.json --exclude 'package*.json' .) |
+    (cd "$dest" && tar xf -)
+  echo "    $dest/ (directory extension, runtime files only)"
 done
 shopt -u nullglob
 
