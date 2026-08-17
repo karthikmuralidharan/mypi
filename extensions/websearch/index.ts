@@ -25,6 +25,7 @@ import * as path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { type RawResponse, renderResearch, shapeResearch } from "./shape";
+import { assertHttpUrl, bodyToText, capFetchText, FETCH_CAPS } from "./fetch";
 
 const AGENT_DIR = path.join(os.homedir(), ".pi", "agent");
 const DEFAULT_MODEL = "openai.gpt-5.6-luna";
@@ -107,7 +108,10 @@ export default function webResearchExtension(pi: ExtensionAPI) {
 
 			// Build the endpoint via the URL constructor rather than string
 			// interpolation, and validate the configured host first.
-			const endpoint = new URL("/v1/responses", assertGatewayUrl(cfg.baseUrl));
+			const endpoint = new URL(
+				"/v1/responses",
+				assertHttpUrl(cfg.baseUrl, "baseUrl"),
+			);
 
 			// Own timeout, but still honour the caller's cancellation.
 			const ac = new AbortController();
@@ -143,6 +147,91 @@ export default function webResearchExtension(pi: ExtensionAPI) {
 			} catch (err) {
 				if (ac.signal.aborted && !signal?.aborted) {
 					throw new Error(`web_research: timed out after ${cfg.timeoutMs}ms`);
+				}
+				throw err;
+			} finally {
+				clearTimeout(timer);
+				signal?.removeEventListener("abort", onAbort);
+			}
+		},
+	});
+
+	pi.registerTool({
+		name: "web_fetch",
+		label: "Web fetch",
+		promptSnippet:
+			"web_fetch: fetch one known URL and return readable text with navigation chrome stripped and length capped",
+		promptGuidelines: [
+			"Use web_fetch for a URL you already hold and want to read now. Use web_research when you have a QUESTION rather than a URL, and ctx_fetch_and_index for large pages or several pages you want to search rather than read.",
+			"web_fetch strips nav/header/footer/aside and caps length. If it reports truncation, either raise max_chars deliberately or switch to ctx_fetch_and_index — do not assume you saw the whole page.",
+		],
+		description:
+			"Fetch a single URL and return readable text: scripts, styles and navigation chrome are removed, " +
+			"HTML entities decoded, JSON pretty-printed, and output length capped with an explicit truncation " +
+			"note. Use for a URL you already have. For a question rather than a URL use web_research; for large " +
+			"or multiple pages you want to search rather than read, use ctx_fetch_and_index.",
+		parameters: Type.Object({
+			url: Type.String({ description: "Absolute http(s) URL to fetch." }),
+			max_chars: Type.Optional(
+				Type.Number({
+					description: `Characters of extracted text to return (default ${FETCH_CAPS.textChars}).`,
+				}),
+			),
+		}),
+		async execute(_toolCallId, params, signal) {
+			const p = params as { url?: unknown; max_chars?: unknown };
+			// Validate before fetching: the URL comes from model output, so it is
+			// untrusted input to an outbound request.
+			const url = assertHttpUrl(String(p.url ?? "").trim(), "url");
+			const maxChars =
+				typeof p.max_chars === "number" && p.max_chars > 0
+					? p.max_chars
+					: FETCH_CAPS.textChars;
+
+			const ac = new AbortController();
+			const timer = setTimeout(() => ac.abort(), 30_000);
+			const onAbort = () => ac.abort();
+			signal?.addEventListener("abort", onAbort, { once: true });
+
+			try {
+				const res = await fetch(url, {
+					redirect: "follow",
+					headers: {
+						accept: "text/html,application/json,text/plain;q=0.9,*/*;q=0.8",
+					},
+					signal: ac.signal,
+				});
+				if (!res.ok) {
+					throw new Error(
+						`web_fetch: HTTP ${res.status} ${res.statusText} for ${url.href}`,
+					);
+				}
+				const body = await res.text();
+				if (body.length > FETCH_CAPS.responseBytes) {
+					throw new Error(
+						`web_fetch: response exceeds ${FETCH_CAPS.responseBytes} bytes; use ctx_fetch_and_index instead`,
+					);
+				}
+				const contentType = res.headers.get("content-type") ?? "";
+				const shaped = capFetchText(bodyToText(body, contentType), maxChars);
+				return {
+					content: [
+						{
+							type: "text",
+							text: `# ${url.href}\n(${contentType || "unknown type"})\n\n${shaped.text}`,
+						},
+					],
+					details: {
+						url: url.href,
+						contentType,
+						rawChars: body.length,
+						returnedChars: shaped.text.length,
+						truncated: shaped.truncated,
+					},
+				};
+			} catch (err) {
+				if (ac.signal.aborted && !signal?.aborted) {
+					throw new Error(`web_fetch: timed out after 30000ms for ${url.href}`);
 				}
 				throw err;
 			} finally {
