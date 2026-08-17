@@ -13,9 +13,9 @@ recommends its own tools in its own guidance text. Verified collisions:
 | --- | --- |
 | context-mode loaded twice | `pi-mcp-adapter` reads `<agent dir>/mcp.json`, the same file pi's native MCP loader reads. Both register the server: 11 tools appear as `ctx_*` **and** as `context-mode_ctx_*`. 22 schemas, 11 jobs. |
 | Phantom dependency | `pi-subagents` was in `npm/package.json` but not in `settings.json` `packages[]`, with zero dependents. **Correction to an earlier claim:** it was *not* actually loaded — its `structured_output` tool never appears in the live tool list, confirming pi loads from `packages[]`, not from `node_modules` presence. So this was dependency-graph noise, not token cost. Removed for hygiene; no capability or token change. |
-| 8 extensions on `tool_result` | context-mode, pi-cmux, pi-herdr-subagents, pi-hermes-memory, pi-lens, pi-mcp-adapter, pi-rtk-optimizer, pi-subagents — a load-order-dependent middleware chain. |
+| 8 extensions on `tool_result` | context-mode, pi-cmux, pi-herdr-subagents, pi-hermes-memory, pi-lens, pi-mcp-adapter, pi-rtk-optimizer, pi-subagents — a load-order-dependent middleware chain. **Now 7:** `pi-herdr-subagents` was retired in the delegation consolidation. |
 | 11 extensions on `before_agent_start` | All chaining `systemPrompt`. Last writer wins by load order. |
-| 3–4 delegation systems | `Agent` · `subagent` (herdr) · `workflow` (dynamic-workflows) · `@tintinweb/pi-subagents` · orphaned `pi-subagents`. |
+| 3–4 delegation systems | `Agent` · `subagent` (herdr) · `workflow` (dynamic-workflows) · `@tintinweb/pi-subagents` · orphaned `pi-subagents`. **Resolved:** now exactly one, `pi-subagents` (nicobailon). See "Delegation consolidated" below. |
 | 5 contradictory search directives | context-mode says prefer `ctx_execute` over bash; pi's core guidelines say use bash for `ls`/`rg`/`find`; pi-lens says prefer ast-grep over text search; pi-fff says prefer `ffgrep` over `ls`/`find`/`bash`. |
 
 The last row is the real cost. For *"find where X is defined"* there were five
@@ -68,19 +68,24 @@ One tool per job, chosen on these grounds:
 - **`memory_search` vs `ctx_search` split by durability.** Cross-session memory
   vs content indexed earlier in the same session — these were being used
   interchangeably.
-- **`Agent` as the single delegation system.** Chosen for breadth (background
-  execution, steering, worktree isolation, model override). Not a quality verdict
-  on the others; picking *one* is the point.
+- **One delegation system: `subagent`, from `pi-subagents` (nicobailon).** Chosen
+  for breadth, then narrowed to a single package once the evidence supported it.
 
-  This is a routing rule about which tool to *reach for*, not a licence to
-  uninstall the others — a distinction this bullet originally failed to make, and
-  which nearly caused real damage. Acting on it, the plan was to retire
-  `@tintinweb/pi-subagents`; grepping the live tool descriptions to their packages
-  showed that package is precisely what registers `Agent`. Removing it would have
-  deleted the designated delegation system along with dispatch for 30 agent
-  definitions and 13 skills. See "Delegation systems — verified tool ownership" in
-  `config/AGENTS.md` for the verified mapping. Confirm which package owns a tool
-  before removing anything that sounds redundant.
+  This bullet previously named `Agent` and, in trying to be careful, said the three
+  installed systems were "not redundant" and must all be kept. Both framings were
+  wrong in opposite directions, and the sequence is instructive. First I proposed
+  retiring `@tintinweb/pi-subagents` without checking what it registered — it
+  registers `Agent`, so that would have deleted delegation outright. Overcorrecting,
+  I then argued the three were three irreducible execution models. Reading
+  nicobailon's docs showed that was also overstated: it provides `agent`,
+  `subagent`, `subagent_wait`, scripted parallel and chain runs via
+  `runs.run`/`runs.all`, and terminal-tab observation of children. One package covers
+  all three surfaces, and the compound skills' Pi guidance named it all along.
+
+  The transferable lesson is narrower than either position: **verify which package
+  registers a tool before reasoning about whether it is redundant.** Grep the live
+  tool description back to its package. Neither the package name nor a plausible
+  story about "execution models" is evidence.
 
 ## Web tooling consolidated
 
@@ -144,9 +149,12 @@ Not yet done, deliberately:
 2. **Two compactors.** context-mode and pi-rtk-optimizer both hook `tool_result`.
    That they *conflict* is inferred from co-registration, **not proven** — no
    evidence yet that output is compacted twice. Verify before removing either.
-3. **Delegation cleanup.** The referee names `Agent`, but the redundant systems
-   are still installed and still contributing tool schemas. Removal is a separate
-   change requiring confirmation of what each is used for.
+3. ~~**Delegation cleanup.**~~ **Done** — `@tintinweb/pi-subagents`,
+   `pi-herdr-subagents` and `@quintinshaw/pi-dynamic-workflows` were retired in
+   favour of `pi-subagents` (nicobailon). Packages 23 → 21. Compatibility was
+   audited first: all 63 agents use only `name`/`description`/`tools`/`isolated`,
+   none reference removed tools, and User-scope discovery reads them unchanged.
+   Costs are recorded in `config/AGENTS.md` under "Delegation systems".
 4. ~~`pi-subagents` orphan removal.~~ **Done** — removed from `package.json`. Note it was a phantom dependency, never loaded, so this bought hygiene rather than tokens.
 
 5. **Does the referee actually change behavior?** It is installed but unproven. The
