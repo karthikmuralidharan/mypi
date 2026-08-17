@@ -2,7 +2,22 @@
 
 pi extensions I write myself. Loaded from `~/.pi/agent/extensions/`.
 
-Currently empty — I have not written a custom extension yet.
+- **`dap/`** — `debug` tool: a DAP client (launch/breakpoints/stack/scopes/
+  evaluate) vendored from `@piex-dev/dap` with upstream defects fixed and a
+  user config layer restored.
+- **`websearch/`** — `web_research` (OpenAI's built-in web_search via the
+  aperture gateway) and `web_fetch` (chrome-stripped page fetch), replacing
+  the removed `rpiv-web-tools`.
+- **`loop-metrics/`** — `/loop-stats`: per-task AI usage console for
+  `/loop`-managed repos. Task identity is the current git branch, scoped to
+  repos with `.loop/config.json`; metrics (tokens, cost, duration, tool calls)
+  accumulate per turn into a `node:sqlite` store, and the dashboard adds a
+  best-effort, GitHub-derived ship-gate stage on top.
+
+Each subdirectory has its own `package.json`/`tsconfig.json`/tests for local
+development; only the runtime `.ts` files ship to `~/.pi/agent/extensions/<name>/`
+(see `bootstrap.sh`'s exclusion list) — `node_modules`, tests, and fixtures are
+dev-only and pi cannot resolve `bun:test`/`node:test` imports anyway.
 
 Not tracked here:
 
