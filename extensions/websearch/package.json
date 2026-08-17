@@ -1,0 +1,14 @@
+{
+  "name": "pi-websearch",
+  "version": "1.0.0",
+  "description": "Web search tool using OpenAI's Responses API",
+  "type": "module",
+  "main": "index.ts",
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.0.0"
+  }
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "file:../.."
+  }
+}
