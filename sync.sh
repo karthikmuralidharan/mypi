@@ -53,22 +53,15 @@ find "$A/extensions" -maxdepth 1 -type f \( -name '*.ts' -o -name '*.js' \) -pri
     fi
   done
 
-# Directory extensions. index.ts is the discriminator: pi loads
-# extensions/<name>/index.ts, whereas plugin config dirs (e.g.
-# extensions/pi-rtk-optimizer/, which holds only config.json) have none and
-# belong under config/extensions/ instead.
+# Directory extensions tracked in repo. This is pull-only (repo → live),
+# not sync, so we never copy FROM live (which omits test/dev files) back into
+# the repo. Bootstrap.sh does the reverse (repo → live).
 shopt -s nullglob
-for d in "$A"/extensions/*/; do
-  name="$(basename "$d")"
-  if [[ ! -f "$d/index.ts" ]]; then
-    echo "    skip $name/ (no index.ts — not an extension)"
-    continue
-  fi
-  rm -rf "$REPO/extensions/$name"
-  mkdir -p "$REPO/extensions/$name"
-  # node_modules is a dev-only type dependency and is gitignored.
-  (cd "$d" && tar cf - --exclude node_modules .) | (cd "$REPO/extensions/$name" && tar xf -)
-  echo "    extensions/$name/ (directory extension)"
+for f in "$REPO"/extensions/*/index.ts; do
+  name="$(basename "$(dirname "$f")")"
+  # Skip if already installed to live (bootstrap handles the install).
+  [[ -f "$A/extensions/$name/index.ts" ]] && continue
+  echo "    (extensions/$name not yet installed to live — bootstrap will do it)"
 done
 shopt -u nullglob
 
