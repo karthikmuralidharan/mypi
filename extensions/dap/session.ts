@@ -134,6 +134,27 @@ interface DapSession {
   initializedSeen: boolean;
   needsConfigurationDone: boolean;
   configurationDoneSent: boolean;
+  /**
+   * One-shot resolver, (re)created by `#prepareStop` before it races the
+   * parent-bound `waitForEvent` promises below. The generic "stopped" /
+   * "terminated" / "exited" handlers in `#wireClient` call this directly,
+   * regardless of which client (parent or a later-promoted child) actually
+   * received the event -- unlike `waitForEvent`, which is bound to one
+   * specific `DapClient` instance at the moment it was called.
+   *
+   * WHY THIS EXISTS: for a multi-session adapter (js-debug's pwa-node), the
+   * parent connection never itself receives stopped/terminated/exited -- the
+   * real target does, on a connection that does not exist yet when
+   * `#prepareStop` runs inside `launch()`. Without this, `launch()`'s only
+   * stop-observation mechanism is bound to a connection that will never fire
+   * it, so it always falls through to STOP_CAPTURE_TIMEOUT_MS (5s) before
+   * even rechecking `s.status` -- and empirically, about 4 times out of 5 on
+   * a loaded machine, some OTHER status mutation had already landed by then
+   * and the stale "stopped" was lost. Verified by instrumenting both paths:
+   * the child's stopped handler fires within ~1s of a real launch, but
+   * `launch()` did not act on it until the full parent-side timeout elapsed.
+   */
+  stopSignal?: () => void;
 }
 
 export interface DapOutputSnapshot {
@@ -1147,6 +1168,8 @@ export class DapSessionManager {
       cwd,
       program,
       client,
+      parentClient: client,
+      childClients: [],
       status: "launching",
       launchedAt: Date.now(),
       lastUsedAt: Date.now(),
@@ -1165,9 +1188,26 @@ export class DapSessionManager {
       initializedSeen: false,
       needsConfigurationDone: false,
       configurationDoneSent: false,
-      parentClient: client,
-      childClients: []
     };
+    this.#wireClient(s, client);
+    this.#sessions.set(s.id, s);
+    this.#activeSessionId = s.id;
+    const hb = setInterval(() => {
+      if (!s.client.isAlive()) s.status = "terminated";
+    }, HEARTBEAT_INTERVAL_MS);
+    if (typeof hb.unref === "function") hb.unref();
+    return s;
+  }
+
+  /**
+   * Registers reverse-request handlers and event listeners on `client`.
+   *
+   * Called once for a session's initial connection (from `#register`) and
+   * again, recursively, for every child connection `startDebugging` opens --
+   * see that handler below for why a child needs the exact same wiring a
+   * parent does (nested children, e.g. worker_threads, need it too).
+   */
+  #wireClient(s: DapSession, client: DapClient): void {
     client.onReverseRequest("runInTerminal", async (raw) => {
       const args = (raw ?? {}) as DapRunInTerminalArguments;
       if (!Array.isArray(args.args) || args.args.length === 0)
@@ -1192,10 +1232,78 @@ export class DapSessionManager {
       return { processId: proc.pid } satisfies DapRunInTerminalResponse;
     });
     client.onReverseRequest("startDebugging", async (raw) => {
+      // vscode-js-debug's `pwa-node`/`pwa-chrome` etc. always launch a lightweight
+      // "parent" session that is a pure bootstrapper -- its own `threads` request
+      // always answers `[]` (verified against dapDebugServer.js). The actual
+      // program, breakpoints, and stops live in a SEPARATE session that the
+      // server asks the client to create via this reverse request. Per
+      // dapDebugServer.js's own multi-session protocol, that "creation" is just a
+      // normal new TCP connection to the SAME port the parent is already using,
+      // self-identified by echoing the given `configuration` (which carries a
+      // `__pendingTargetId` the server uses to match the new connection to the
+      // pending target) back as that new connection's own launch/attach
+      // arguments. There is no separate multiplexing handshake beyond that.
       const sa = (raw ?? {}) as Partial<DapStartDebuggingArguments>;
-      console.error(
-        `[dap] ${adapter.name} requested child debug session (${sa.request ?? "unknown"}) - not supported`,
-      );
+      if (
+        (sa.request !== "launch" && sa.request !== "attach") ||
+        !sa.configuration ||
+        typeof sa.configuration !== "object"
+      ) {
+        truncateOutput(
+          s,
+          `[dap] ${s.adapter.name} sent startDebugging with no usable request/configuration; ignoring\n`,
+        );
+        return {};
+      }
+      const target = client.socketTarget();
+      if (!target) {
+        truncateOutput(
+          s,
+          `[dap] ${s.adapter.name} requested a child debug session, but this connection is stdio-based and cannot host one\n`,
+        );
+        return {};
+      }
+      const child = await DapClient.connectChild({
+        adapter: s.adapter,
+        cwd: s.cwd,
+        proc: client.process,
+        host: target.host,
+        port: target.port,
+      });
+      this.#wireClient(s, child); // recursive: a child that itself spawns a child (nested workers) needs the same handling
+      s.childClients.push(child);
+      // Correct DAP protocol order: launch/attach is SENT first, but the
+      // adapter deliberately withholds its RESPONSE until configurationDone
+      // arrives (dapDebugServer.js: `n.deferred.resolve({})` only after
+      // `await e.configurationDone()`). So send launch/attach without awaiting
+      // it yet, wait for "initialized", send configurationDone to release the
+      // adapter's pending response, THEN await the launch/attach response.
+      //
+      // An earlier version of this got the order backwards -- sending
+      // configurationDone BEFORE launch/attach -- which is wrong in the other
+      // direction from the original bug (sending configurationDone too late/
+      // never): the adapter cannot resolve a configurationDone gate for a
+      // target it has not been told about yet. Both orderings were verified
+      // empirically against a hermetic fixture, not assumed: send-launch-first
+      // is the one that actually reaches "stopped" reliably.
+      const initializedP = child
+        .waitForEvent("initialized", undefined, undefined, 5_000)
+        .catch(() => {});
+      await child.initialize(this.#initArgs(s.adapter));
+      const launchP = child.sendRequest(sa.request, sa.configuration);
+      launchP.catch(() => {});
+      await initializedP;
+      await child.sendRequest("configurationDone", {}).catch(() => {});
+      await launchP;
+      // The child is where the real program/threads/breakpoints live, so it
+      // becomes the session's operative client going forward. Last-connected-
+      // child-wins: correct for the common single-target case (exactly one
+      // child ever connects). A program that spawns more than one debuggable
+      // child (e.g. multiple worker_threads) would only expose the most
+      // recently connected one through `s.client`; earlier children stay
+      // reachable via `s.childClients` but not through the normal request-
+      // dispatch path. Documented limitation, not a silent gap.
+      s.client = child;
       return {};
     });
     client.onEvent("output", (body) => {
@@ -1215,6 +1323,7 @@ export class DapSessionManager {
         text: sb.text,
       };
       s.lastStackFrames = [];
+      s.stopSignal?.();
     });
     client.onEvent("continued", (body) => {
       s.status = "running";
@@ -1223,17 +1332,12 @@ export class DapSessionManager {
     });
     client.onEvent("exited", (body) => {
       s.exitCode = (body as DapExitedEventBody).exitCode;
+      s.stopSignal?.();
     });
     client.onEvent("terminated", () => {
       s.status = "terminated";
+      s.stopSignal?.();
     });
-    this.#sessions.set(s.id, s);
-    this.#activeSessionId = s.id;
-    const hb = setInterval(() => {
-      if (!client.isAlive()) s.status = "terminated";
-    }, HEARTBEAT_INTERVAL_MS);
-    if (typeof hb.unref === "function") hb.unref();
-    return s;
   }
 
   #initArgs(adapter: DapResolvedAdapter): DapInitializeArguments {
@@ -1325,7 +1429,10 @@ export class DapSessionManager {
     signal?: AbortSignal,
     timeoutMs = 30_000,
   ): Promise<unknown> {
+    const { promise: signalP, resolve } = Promise.withResolvers<void>();
+    s.stopSignal = resolve;
     const ps = [
+      signalP,
       s.client.waitForEvent("stopped", undefined, signal, timeoutMs),
       s.client.waitForEvent("terminated", undefined, signal, timeoutMs),
       s.client.waitForEvent("exited", undefined, signal, timeoutMs),
@@ -1421,7 +1528,15 @@ export class DapSessionManager {
   #dispose(s: DapSession) {
     if (this.#activeSessionId === s.id) this.#activeSessionId = null;
     this.#sessions.delete(s.id);
-    void s.client.dispose().catch(() => {});
+    // s.client may have been reassigned to a child connection (see #wireClient's
+    // startDebugging handling) -- dispose it AND the original parent AND every
+    // other child, or the connections `s.client` no longer points at leak.
+    const clients = new Set<DapClient>([
+      s.parentClient,
+      s.client,
+      ...s.childClients,
+    ]);
+    for (const c of clients) void c.dispose().catch(() => {});
   }
 
   #mapSrcBps(

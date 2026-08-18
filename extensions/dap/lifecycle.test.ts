@@ -215,3 +215,98 @@ describe("teardown", () => {
 		).resolves.toBeNull();
 	});
 });
+
+// ---------------------------------------------------------------------------
+// Multi-session (vscode-js-debug style) -- the startDebugging / child-session regression
+// ---------------------------------------------------------------------------
+//
+// js-debug's `pwa-node` always launches a lightweight "parent" session that is
+// a pure bootstrapper (dapDebugServer.js: its own `threads` request always
+// answers `[]`). The real program lives in a SEPARATE session the server asks
+// the client to create via a `startDebugging` reverse request -- a brand new
+// TCP connection to the SAME port, self-identified via `__pendingTargetId` in
+// its own launch/attach arguments. Found live against the real js-debug
+// adapter (see session.ts's `#wireClient`); multi-session-adapter.mjs
+// reproduces that exact protocol hermetically so this is a permanent
+// regression test, not a one-off manual check.
+describe("multi-session (vscode-js-debug style)", () => {
+	const MULTI_FIXTURE = path.join(
+		import.meta.dir,
+		"fixtures",
+		"multi-session-adapter.mjs",
+	);
+
+	function multiSessionAdapter(): DapResolvedAdapter {
+		return {
+			name: "fake-multi-session",
+			command: process.execPath,
+			args: [MULTI_FIXTURE, "${port}"],
+			resolvedCommand: process.execPath,
+			languages: ["javascript"],
+			fileTypes: [".js"],
+			rootMarkers: [],
+			launchDefaults: { request: "launch", type: "pwa-node" },
+			attachDefaults: { request: "attach", type: "pwa-node" },
+			connectMode: "tcp",
+			acceptsDirectoryProgram: false,
+		};
+	}
+
+	test("launch resolves stopped rather than hanging, by sending configurationDone on the CHILD connection", async () => {
+		// The load-bearing assertion: without sending configurationDone on the
+		// child (not just the parent), the fixture withholds the child's
+		// launch/attach response forever -- exactly reproducing the real bug,
+		// where `child.sendRequest(request, configuration)` never resolved and
+		// the caller's own timeout was the only thing that ever cut it off.
+		const mgr = new DapSessionManager();
+		live.push(mgr);
+		const summary = await mgr.launch(
+			{
+				adapter: multiSessionAdapter(),
+				program: "/fake/app.js",
+				cwd: process.cwd(),
+			},
+			undefined,
+			5_000,
+		);
+		expect(summary.status).toBe("stopped");
+		expect(summary.stopReason).toBe("breakpoint");
+	});
+
+	test("promotes the child to the session's operative client: threads reflects the child, not the parent", async () => {
+		// The fixture answers `threads: []` on the parent connection and a real
+		// thread on the child -- so a non-empty result here proves `s.client`
+		// was actually reassigned to the child, not left pointing at the
+		// bootstrapper.
+		const mgr = new DapSessionManager();
+		live.push(mgr);
+		await mgr.launch(
+			{
+				adapter: multiSessionAdapter(),
+				program: "/fake/app.js",
+				cwd: process.cwd(),
+			},
+			undefined,
+			5_000,
+		);
+		const threads = await mgr.threads(undefined, 3_000);
+		expect(threads.threads).toHaveLength(1);
+		expect(threads.threads[0]?.id).toBe(1);
+	});
+
+	test("terminate disposes both the parent and child connections without hanging", async () => {
+		const mgr = new DapSessionManager();
+		live.push(mgr);
+		await mgr.launch(
+			{
+				adapter: multiSessionAdapter(),
+				program: "/fake/app.js",
+				cwd: process.cwd(),
+			},
+			undefined,
+			5_000,
+		);
+		expect(await mgr.terminate(undefined, 3_000)).not.toBeNull();
+		expect(mgr.listSessions()).toHaveLength(0);
+	});
+});
