@@ -110,6 +110,10 @@ interface DapSession {
   cwd: string;
   program?: string;
   client: DapClient;
+  /** The first connection ever made for this session. Immutable, kept around purely so #dispose can close it even after `client` is reassigned to a child (see `#wireClient`'s `startDebugging` handling). */
+  parentClient: DapClient;
+  /** Every additional connection opened in response to a `startDebugging` reverse request, in connection order. */
+  childClients: DapClient[];
   status: DapSessionStatus;
   launchedAt: number;
   lastUsedAt: number;
@@ -208,7 +212,6 @@ function truncateOutput(s: DapSession, output: string): void {
   }
   if (s.outputBufferedBytes > MAX_OUTPUT_BYTES && s.outputChunks.length > 0) {
     const front = s.outputChunks[0];
-    const fb = Buffer.byteLength(front, "utf-8");
     const excess = s.outputBufferedBytes - MAX_OUTPUT_BYTES;
     s.outputChunks[0] = Buffer.from(front, "utf-8")
       .subarray(excess)
@@ -1162,6 +1165,8 @@ export class DapSessionManager {
       initializedSeen: false,
       needsConfigurationDone: false,
       configurationDoneSent: false,
+      parentClient: client,
+      childClients: []
     };
     client.onReverseRequest("runInTerminal", async (raw) => {
       const args = (raw ?? {}) as DapRunInTerminalArguments;

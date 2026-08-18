@@ -214,6 +214,7 @@ export class DapClient {
   readonly cwd: string;
   readonly #proc: ChildProcess;
   readonly #transport: DapTransport;
+  #socketTarget?: { host: string; port: number };
   #requestSeq = 0;
   #pendingRequests = new Map<number, DapPendingRequest>();
   #messageBuffer = Buffer.alloc(0);
@@ -296,17 +297,23 @@ export class DapClient {
     try {
       // `socket`: the adapter picks the port and prints it (dlv).
       // `tcp`: we already chose it, so just dial until it binds (js-debug).
-      const target =
-        mode === "socket"
-          ? await waitForAnnouncedAddress(proc, SOCKET_READY_TIMEOUT_MS)
-          : { host: "127.0.0.1", port: port! };
+      let target: { host: string; port: number };
+      if (mode === "socket") {
+        target = await waitForAnnouncedAddress(proc, SOCKET_READY_TIMEOUT_MS);
+      } else {
+        if (port === undefined)
+          throw new Error("internal: tcp mode requires a reserved port");
+        target = { host: "127.0.0.1", port };
+      }
       const sock = await connectWithRetry(target.host, target.port, deadline);
       sock.setNoDelay(true);
-      return new DapClient(adapter, cwd, proc, {
+      const client = new DapClient(adapter, cwd, proc, {
         readable: sock,
         writable: sock,
         close: () => sock.destroy(),
       });
+      client.#socketTarget = target;
+      return client;
     } catch (err) {
       // Never leave an orphaned adapter behind when the handshake fails.
       try {
@@ -320,6 +327,53 @@ export class DapClient {
     }
   }
 
+  /**
+   * Connects an ADDITIONAL session to an already-running adapter's existing
+   * socket/tcp listener, rather than spawning a new adapter process.
+   *
+   * WHY THIS EXISTS: vscode-js-debug's multi-session protocol (see session.ts's
+   * `startDebugging` handling) has the server ask the client, via a DAP reverse
+   * request, to open a second connection to the SAME port for the actual
+   * debuggee -- the first ("parent") connection is only ever a bootstrapper that
+   * reports zero threads. Verified against js-debug's own dapDebugServer.js:
+   * each new TCP connection becomes a new session, self-identified by including
+   * `__pendingTargetId` in its own launch/attach arguments -- there is no
+   * separate handshake step, just a normal initialize+launch over a fresh
+   * connection to the port the parent already used.
+   *
+   * Reuses the PARENT's `proc` rather than tracking a second one: there is no
+   * second OS process here, just a second logical session multiplexed over a
+   * new socket to the one already-running adapter. isAlive() staying correct
+   * for both instances (both read the same proc.exitCode) depends on this.
+   */
+  static async connectChild(opts: {
+    adapter: DapResolvedAdapter;
+    cwd: string;
+    proc: ChildProcess;
+    host: string;
+    port: number;
+    timeoutMs?: number;
+  }): Promise<DapClient> {
+    const {
+      adapter,
+      cwd,
+      proc,
+      host,
+      port,
+      timeoutMs = SOCKET_READY_TIMEOUT_MS,
+    } = opts;
+    const deadline = Date.now() + timeoutMs;
+    const sock = await connectWithRetry(host, port, deadline);
+    sock.setNoDelay(true);
+    const client = new DapClient(adapter, cwd, proc, {
+      readable: sock,
+      writable: sock,
+      close: () => sock.destroy(),
+    });
+    client.#socketTarget = { host, port };
+    return client;
+  }
+
   // ── Public API ───────────────────────────────────────────────
 
   get capabilities(): DapCapabilities | undefined {
@@ -327,6 +381,14 @@ export class DapClient {
   }
   get lastActivity(): number {
     return this.#lastActivity;
+  }
+  /** The underlying adapter process. Shared across a parent client and any child clients connected via `connectChild`. */
+  get process(): ChildProcess {
+    return this.#proc;
+  }
+  /** The socket/tcp address this client is connected on, or `undefined` for stdio-mode adapters (which cannot host child sessions). */
+  socketTarget(): { host: string; port: number } | undefined {
+    return this.#socketTarget;
   }
 
   isAlive(): boolean {
