@@ -273,7 +273,20 @@ export class DapClient {
     const proc = spawn(cmd, args, {
       cwd,
       stdio: ["pipe", "pipe", "pipe"],
-      env: { ...process.env, ...NON_INTERACTIVE_ENV },
+      // PWD must match `cwd`, not be left inheriting the parent (pi's own) PWD.
+      // Go's os.Getwd() prefers $PWD when it is valid, falling back to the raw
+      // getcwd(2) syscall (which resolves symlinks) only when $PWD doesn't match
+      // reality. On macOS, /tmp is a symlink to /private/tmp: an inherited, stale
+      // PWD makes dlv fall onto that syscall path, so it computes its internal
+      // `-o <resolved-cwd>/__debug_binNNN` using the RESOLVED form while the
+      // `program` argument we pass through stays unresolved -- go build then
+      // rejects the mismatch with "directory ... outside main module or its
+      // selected dependencies". Verified empirically: reproducing dlv's exact
+      // failing `go build -o /private/tmp/x/__debug_bin ... /tmp/x` command by
+      // hand succeeds when PWD=/tmp/x (unresolved, matching a real cd) and fails
+      // when both arguments use the fully-resolved /private/tmp form -- the
+      // determining factor is $PWD, not the path strings' resolved-ness alone.
+      env: { ...process.env, ...NON_INTERACTIVE_ENV, PWD: cwd },
     });
 
     if (mode !== "socket" && mode !== "tcp")
