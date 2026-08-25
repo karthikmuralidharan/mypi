@@ -52,8 +52,12 @@ for f in settings.json mcp.json AGENTS.md hermes-memory-config.json; do
 done
 
 echo "==> shell integration"
-[[ -f "$REPO/config/fish/pi-fff-mode.fish" ]] &&
-  install_file "$REPO/config/fish/pi-fff-mode.fish" "$FISH_CONFD/pi-fff-mode.fish"
+if command -v fish >/dev/null 2>&1; then
+  [[ -f "$REPO/config/fish/pi-fff-mode.fish" ]] &&
+    install_file "$REPO/config/fish/pi-fff-mode.fish" "$FISH_CONFD/pi-fff-mode.fish"
+else
+  echo "    skip pi-fff-mode.fish (fish not installed)"
+fi
 
 # hermes does no tilde expansion, so childExtensionPaths must be absolute. Re-root
 # any committed path onto THIS machine's agent dir, otherwise a restore under a
