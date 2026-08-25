@@ -8,6 +8,7 @@ set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 A="$HOME/.pi/agent"
 AGENTS_HOME="$HOME/.agents"
+FISH_CONFD="$HOME/.config/fish/conf.d"
 
 [[ -d "$A" ]] || {
   echo "error: $A not found — is pi installed?" >&2
@@ -23,6 +24,15 @@ for f in settings.json mcp.json AGENTS.md hermes-memory-config.json; do
     echo "    skip $f (not present)"
   fi
 done
+
+echo "==> shell integration"
+mkdir -p "$REPO/config/fish"
+if [[ -f "$FISH_CONFD/pi-fff-mode.fish" ]]; then
+  cp "$FISH_CONFD/pi-fff-mode.fish" "$REPO/config/fish/pi-fff-mode.fish"
+  echo "    config/fish/pi-fff-mode.fish"
+else
+  echo "    skip pi-fff-mode.fish (not present)"
+fi
 
 echo "==> npm manifests"
 mkdir -p "$REPO/config/npm"

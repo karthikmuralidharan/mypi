@@ -12,6 +12,7 @@ set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 A="$HOME/.pi/agent"
 AGENTS_HOME="$HOME/.agents"
+FISH_CONFD="$HOME/.config/fish/conf.d"
 FORCE=0
 CONFIG_ONLY=0
 for arg in "$@"; do
@@ -49,6 +50,10 @@ echo "==> config -> $A"
 for f in settings.json mcp.json AGENTS.md hermes-memory-config.json; do
   install_file "$REPO/config/$f" "$A/$f"
 done
+
+echo "==> shell integration"
+[[ -f "$REPO/config/fish/pi-fff-mode.fish" ]] &&
+  install_file "$REPO/config/fish/pi-fff-mode.fish" "$FISH_CONFD/pi-fff-mode.fish"
 
 # hermes does no tilde expansion, so childExtensionPaths must be absolute. Re-root
 # any committed path onto THIS machine's agent dir, otherwise a restore under a

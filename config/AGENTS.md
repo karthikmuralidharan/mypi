@@ -23,9 +23,9 @@ first actually failed.
 
 | Job | Use | Not |
 | --- | --- | --- |
-| Find files by name, path, or concept | `fffind` | `ls`, `find`, `bash find` |
-| Find text, or a symbol in an unindexed language | `ffgrep` | `grep`, `bash rg`, `bash grep` |
-| **Find where a symbol is defined or used** | `lsp_navigation` definition / references / implementation | `ffgrep` for a symbol the LSP knows |
+| Find files by name, path, or concept | `find` (FFF override†) | `ls`, `bash find` |
+| Find text, or a symbol in an unindexed language | `grep` (FFF override†) | `bash rg`, `bash grep` |
+| **Find where a symbol is defined or used** | `lsp_navigation` definition / references / implementation | `grep` for a symbol the LSP knows |
 | **Trace who calls what** | `lsp_navigation` call hierarchy | grepping for the function name |
 | **Rename a symbol or move a file** | `lsp_navigation` `rename` / `rename_file` with `apply` | hand-editing each call site |
 | Orient in an unfamiliar project | `project_report` | walking the tree by hand |
@@ -41,12 +41,22 @@ first actually failed.
 | Run a command with short known output | `bash` | `ctx_execute` |
 | Delegate parallel work | `subagent` | mixing delegation systems in one task |
 
+† `PI_FFF_MODE=override` (set globally via `~/.config/fish/conf.d/pi-fff-mode.fish`,
+versioned at `config/fish/pi-fff-mode.fish`) makes `@ff-labs/pi-fff` register its
+fast implementation under the exact names `grep`/`find`, replacing pi's built-ins
+outright rather than sitting alongside them as separately-named `ffgrep`/`fffind`
+tools the model would otherwise have to choose between. Verified from pi-fff's own
+source (`resolveToolNames`): this is a real substitution, not a preference. A tool
+call named `grep` or `find` in this setup IS FFF; "Not: bash grep/rg" still means
+what it says — shelling out manually bypasses FFF's frecency ranking and git
+awareness for no benefit.
+
 **Prefer the LSP for navigation, comprehension, and mechanical refactors.** It
 answers from a type-aware graph, so `references` finds actual usages while a grep
 finds every string that merely looks like one — including comments, unrelated
 same-named members, and none of the aliased imports. `rename` with `apply` edits
 every real call site atomically and re-syncs the servers afterwards, which
-hand-editing does not. Use `ffgrep` when the LSP cannot help: an unsupported
+hand-editing does not. Use `grep` when the LSP cannot help: an unsupported
 language, config and markup files, log output, or a plain text search.
 
 `lsp_navigation` and the `ast_grep_*` tools are situational and inactive by
@@ -87,10 +97,10 @@ re-litigated every session:
 
 - `ctx_execute` vs `bash` — bash for short, known-size output; `ctx_execute` when
   output is large, unbounded, or needs deriving down to an answer.
-- `ffgrep` vs `lsp_navigation` vs `ast_grep_search` vs `bash rg` — `lsp_navigation`
-  for symbols the language server understands, `ffgrep` for text and for languages
-  or file types it does not, `ast_grep_search` only when the query is genuinely
-  structural.
+- `grep` vs `lsp_navigation` vs `ast_grep_search` vs `bash rg` — `lsp_navigation`
+  for symbols the language server understands, `grep` (FFF override) for text and
+  for languages or file types it does not, `ast_grep_search` only when the query
+  is genuinely structural.
 - `read` vs `module_report`/`read_symbol` — outline first for unfamiliar files,
   direct `read` when the target region is already known.
 - `memory_search` vs `ctx_search` — `memory_search` for durable cross-session
