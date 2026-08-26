@@ -42,6 +42,7 @@ gh_issue_url() { echo "https://github.com/${GH_REPO}/issues/$1"; }
 # create-issue: the GH issue that owns the spec. Tagged loop for discovery.
 # ---------------------------------------------------------------------------
 cmd_create_issue() {
+    require_gate 2
     parse_args "$@"
     local title="${ARGS[title]:?--title required}" body_file="${ARGS["body-file"]:?--body-file required}"
     local labels="loop"
@@ -50,6 +51,7 @@ cmd_create_issue() {
     local url
     url="$(gh issue create --repo "$GH_REPO" --title "$title" --body-file "$body_file" --label "$labels")"
     local num="${url##*/}"
+    state_set issue "#$num"
     log "created GH issue #$num — $title"
     echo "#$num"
 }
@@ -59,6 +61,7 @@ cmd_create_issue() {
 # (GraphQL addSubIssue), not just a checklist item.
 # ---------------------------------------------------------------------------
 cmd_add_subissue() {
+    require_gate 2
     parse_args "$@"
     local parent="${ARGS[parent]:?--parent required}" title="${ARGS[title]:?--title required}"
     local body="${ARGS["body-file"]:-/dev/null}"
@@ -94,12 +97,14 @@ find_jira_by_gh() {
 # SWONE-232's parent is the SWONE-2 epic via .fields.parent, not epic-link).
 # ---------------------------------------------------------------------------
 cmd_mirror_jira() {
+    require_gate 2
     parse_args "$@"
     local gh_n="${ARGS[gh]:?--gh required}" epic="${ARGS[epic]:?--epic required}" itype="${ARGS[type]:-Story}"
     local existing
     existing="$(find_jira_by_gh "$gh_n")"
     if [ -n "$existing" ]; then
         log "JIRA already mirrors #${gh_n#\#}: $existing (no-op)"
+        state_set jira "$existing"
         echo "$existing"
         return
     fi
@@ -116,6 +121,7 @@ cmd_mirror_jira() {
     key="$(jira_curl POST /issue -d "$payload" | jq -r .key)"
     log "created JIRA $itype $key under epic $epic (mirrors #${gh_n#\#})"
     cmd_link --gh "$gh_n" --jira "$key"
+    state_set jira "$key"
     echo "$key"
 }
 
@@ -124,6 +130,7 @@ cmd_mirror_jira() {
 # mirroring a GH sub-issue.
 # ---------------------------------------------------------------------------
 cmd_mirror_subtask() {
+    require_gate 2
     parse_args "$@"
     local gh_n="${ARGS[gh]:?--gh required}" jparent="${ARGS["jira-parent"]:?--jira-parent required}"
     local existing
@@ -153,6 +160,7 @@ cmd_mirror_subtask() {
 #   GH  -> JIRA by ensuring a "JIRA: <KEY>" line + label in the issue body.
 # ---------------------------------------------------------------------------
 cmd_link() {
+    require_gate 2
     parse_args "$@"
     local gh_n="${ARGS[gh]:?--gh required}" key="${ARGS[jira]:?--jira required}"
     local url
@@ -174,10 +182,13 @@ cmd_link() {
 
 # ---------------------------------------------------------------------------
 # status: transition a JIRA issue by target status NAME (resolves the id).
+# --jira falls back to this branch's recorded state when omitted, so a
+# resumed session does not need $JIRA held in memory across turns.
 # ---------------------------------------------------------------------------
 cmd_status() {
     parse_args "$@"
-    local key="${ARGS[jira]:?--jira required}" to="${ARGS[to]:?--to required}"
+    local key="${ARGS[jira]:-$(state_read '.jira')}" to="${ARGS[to]:?--to required}"
+    [ -n "$key" ] || die "--jira required (not given, and none recorded in state — pass --jira, or run sync mirror-jira/bootstrap first)"
     local tid
     tid="$(jira_curl GET "/issue/${key}/transitions" | jq -r --arg n "$to" '.transitions[] | select(.name==$n) | .id' | head -1)"
     [ -n "$tid" ] || die "no transition named '$to' available on $key (check workflow)"
@@ -189,13 +200,22 @@ cmd_status() {
 # auto-status: read the PR's actual state and pick the JIRA transition
 # deterministically, instead of the loop skill remembering which PR event
 # maps to which transition across many turns. No-ops on a closed-unmerged PR
-# (never auto-revert a status).
+# (never auto-revert a status). --jira and --pr both fall back to recorded
+# state / the current branch's PR when omitted — the same reasoning as
+# cmd_status.
 # ---------------------------------------------------------------------------
 cmd_auto_status() {
     parse_args "$@"
-    local key="${ARGS[jira]:?--jira required}" pr="${ARGS[pr]:?--pr required}"
-    local repo state
+    local key="${ARGS[jira]:-$(state_read '.jira')}"
+    [ -n "$key" ] || die "--jira required (not given, and none recorded in state — pass --jira, or run sync mirror-jira/bootstrap first)"
+    local repo
     repo="$(gh_repo)"
+    local pr="${ARGS[pr]:-}"
+    [ -n "$pr" ] || pr="$(gh pr view --repo "$repo" --json number -q .number 2>/dev/null || true)"
+    [ -n "$pr" ] || pr="$(state_read '.pr')"
+    [ -n "$pr" ] || die "--pr required (not given, no open PR found for the current branch, and none recorded in state)"
+    state_set pr "$pr"
+    local state
     state="$(gh pr view "$pr" --repo "$repo" --json state -q .state)"
     case "$state" in
     OPEN) cmd_status --jira "$key" --to "In Progress" ;;
@@ -222,11 +242,26 @@ cmd_bootstrap() {
     local -a subitems=()
     while [ $# -gt 0 ]; do
         case "$1" in
-        --title) title="$2"; shift 2 ;;
-        --body-file) body_file="$2"; shift 2 ;;
-        --epic) epic="$2"; shift 2 ;;
-        --type) itype="$2"; shift 2 ;;
-        --subitem) subitems+=("$2"); shift 2 ;;
+        --title)
+            title="$2"
+            shift 2
+            ;;
+        --body-file)
+            body_file="$2"
+            shift 2
+            ;;
+        --epic)
+            epic="$2"
+            shift 2
+            ;;
+        --type)
+            itype="$2"
+            shift 2
+            ;;
+        --subitem)
+            subitems+=("$2")
+            shift 2
+            ;;
         *) die "bootstrap: unexpected arg: $1" ;;
         esac
     done

@@ -3,16 +3,18 @@
 #
 # Subcommands:
 #   setup            interactive first-time config -> .loop/config.json
+#   gate-pass  ...    -> record a passed hard gate (1 or 2) into run state
 #   find-epic  ...    -> find-epic.sh  (search parent epics to confirm)
 #   sync       ...    -> sync.sh       (GH<->JIRA traceability)
 #   ci-watch   ...    -> ci-watch.sh   (tail CI until it settles)
 #   pr-check   ...    -> pr-check.sh   (rearming gate: unresolved review threads)
 #   ship-gate  ...    -> ship-gate.sh  (ci-watch + pr-check as one call/one exit code)
+#   where            -> status.sh (run state vs. live gh/JIRA/git facts)
 #   config           print resolved config
 #
 # The dot-folder .loop/ is fully local (gitignored). Nothing repo-specific
 # is baked into these scripts — the JIRA project/site and GH repo come from
-# config written by `setup`.
+# config written by `setup`. Run state lives in .loop/state/<branch>.json.
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib/common.sh
@@ -71,16 +73,46 @@ cmd_config() {
     echo "resolved: site=$JIRA_SITE project=$JIRA_PROJECT gh=$(cfg '.gh.repo')"
 }
 
+# gate-pass N [--note TEXT] — record that a human approved hard gate N (1 or
+# 2) for the branch's current run. This is the record-keeping step the two
+# hard gates need: sync.sh's create/mutate subcommands refuse to run
+# (require_gate) until gate 2 is recorded here, so "never skip GATE 2" is a
+# script check, not only an instruction the agent must remember across a
+# long session.
+cmd_gate_pass() {
+    local n="${1:?usage: loop gate-pass <1|2> [--note TEXT]}"
+    shift || true
+    case "$n" in
+        1 | 2) ;;
+        *) die "gate-pass: N must be 1 or 2, got '$n'" ;;
+    esac
+    local note=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+        --note) note="$2"; shift 2 ;;
+        *) die "gate-pass: unexpected arg: $1" ;;
+        esac
+    done
+    state_set_json "gate${n}" "$(jq -n --arg note "$note" '{approved:true, at:(now|todate), note:$note}')"
+    if [ -n "$note" ]; then
+        log "gate $n recorded as passed ($note)"
+    else
+        log "gate $n recorded as passed"
+    fi
+}
+
 sub="${1:-}"; shift || true
 case "$sub" in
     setup)     cmd_setup "$@";;
+    gate-pass) cmd_gate_pass "$@";;
     config)    cmd_config "$@";;
     find-epic) exec "$HERE/find-epic.sh" "$@";;
     sync)      exec "$HERE/sync.sh" "$@";;
     ci-watch)  exec "$HERE/ci-watch.sh" "$@";;
     pr-check)  exec "$HERE/pr-check.sh" "$@";;
     ship-gate) exec "$HERE/ship-gate.sh" "$@";;
+    where)     exec "$HERE/status.sh" "$@";;
     ""|-h|--help)
-        sed -n '2,19p' "$HERE/loop";;
-    *) die "unknown subcommand: $sub (try: setup, find-epic, sync, ci-watch, pr-check, ship-gate, config)";;
+        sed -n '2,21p' "$HERE/loop";;
+    *) die "unknown subcommand: $sub (try: setup, gate-pass, find-epic, sync, ci-watch, pr-check, ship-gate, where, config)";;
 esac

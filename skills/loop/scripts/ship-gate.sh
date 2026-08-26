@@ -25,6 +25,16 @@ pr_rc=0
 echo "===== ship gate summary (branch: $branch) ====="
 if [ "$ci_rc" -eq 0 ] && [ "$pr_rc" -eq 0 ]; then
     log "ship gate CLEAR — CI green and review-clear in the same pass"
+    # Best-effort: record the commit this passed against, so `loop where`
+    # can later tell "pushed since the last clear ship gate" from "still on
+    # the commit that passed" without the agent remembering across turns.
+    # Soft-fails (never blocks a clear ship gate) when .loop/ was never set
+    # up — ship-gate.sh works standalone without require_config, and this
+    # must not take that property away.
+    if [ -n "${LOOP_DIR:-}" ]; then
+        sha="$(git rev-parse "$branch" 2>/dev/null || true)"
+        [ -n "$sha" ] && state_set lastShipGatePassCommit "$sha" "$branch" 2>/dev/null || true
+    fi
     exit 0
 fi
 [ "$ci_rc" -ne 0 ] && warn "CI: FAIL (see ci-watch output above)"
