@@ -28,6 +28,20 @@ export interface ToolCallStats {
  byName: Record<string, number>;
 }
 
+/** Coarse stage buckets used for per-turn accounting -- see loop-state.ts's
+ * `localStageBucket`. A separate row per bucket is accumulated alongside
+ * the task's totals, so the dashboard can show where tokens/cost/time went
+ * across the pipeline, not just a running total. */
+export type StageBucket = "spec_plan" | "implementing" | "shipping";
+
+export interface StageBucketStats {
+ stage: StageBucket;
+ turns: number;
+ durationMs: number;
+ tokens: TokenUsage;
+ cost: CostUsage;
+}
+
 export interface TaskStats {
  repoSlug: string;
  branch: string;
@@ -39,6 +53,16 @@ export interface TaskStats {
  toolCalls: ToolCallStats;
  tokens: TokenUsage;
  cost: CostUsage;
+ /** From `.loop/state/<branch>.json`'s `.jira` field -- see loop-state.ts.
+  * Undefined until `sync mirror-jira`/`bootstrap` has run for this branch. */
+ jiraKey?: string;
+ /** Per-stage-bucket accounting, keyed by bucket. Only buckets the task has
+  * actually recorded a turn in are present. */
+ stageBreakdown: Partial<Record<StageBucket, StageBucketStats>>;
+ /** The bucket the most recent turn was recorded in. Compared against the
+  * new turn's bucket in `mergeTask` to detect a stage transition -- see
+  * store.ts's `recordTurn` return value and gh-rollup.ts. */
+ lastStageBucket?: StageBucket;
 }
 
 export interface TurnDelta {

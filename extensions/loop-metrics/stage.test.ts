@@ -7,6 +7,7 @@ import {
   parseClosesIssueNumber,
   parseJiraKey,
   resolveStage,
+  stageFromLoopState,
   stageFromPr,
 } from "./stage.ts";
 
@@ -213,4 +214,81 @@ test("resolveStage returns 'unknown' rather than throwing when gh itself fails",
     },
   });
   assert.equal(stage.label, "unknown");
+});
+
+// ---- stageFromLoopState: pure, no gh at all -- covers loop Stage 0-7 ----
+
+test("stageFromLoopState reports pre-GATE-1 when nothing is recorded yet", () => {
+  assert.equal(
+    stageFromLoopState(undefined).label,
+    "spec/plan (Stage 0-2, pre-GATE 1)",
+  );
+  assert.equal(
+    stageFromLoopState({}).label,
+    "spec/plan (Stage 0-2, pre-GATE 1)",
+  );
+});
+
+test("stageFromLoopState reports plan-approved once gate1 is recorded, before an issue exists", () => {
+  const stage = stageFromLoopState({ gate1: { approved: true } });
+  assert.equal(stage.label, "plan approved · pre-issue (Stage 2-4)");
+});
+
+test("stageFromLoopState reports implementing once an issue exists, before a PR", () => {
+  const stage = stageFromLoopState({
+    gate1: { approved: true },
+    issue: "#42",
+    jira: "SWONE-9",
+  });
+  assert.equal(stage.label, "implementing (Stage 5-7, no PR yet)");
+  assert.equal(stage.jiraKey, "SWONE-9");
+});
+
+// ---- resolveStage with loopState: the pre-PR layering ----
+
+test("resolveStage uses the bare 'no PR yet' fallback when no loopState is passed (backward compatible)", async () => {
+  const stage = await resolveStage("o/r", "feat/x", {
+    runGh: async () => "[]",
+  });
+  assert.equal(stage.label, "no PR yet");
+});
+
+test("resolveStage uses the state-derived label when loopState is passed and no PR exists", async () => {
+  const stage = await resolveStage("o/r", "feat/x", {
+    runGh: async () => "[]",
+    loopState: { issue: "#7", jira: "SP-3" },
+  });
+  assert.equal(stage.label, "implementing (Stage 5-7, no PR yet)");
+  assert.equal(stage.jiraKey, "SP-3");
+});
+
+test("resolveStage prefers state.jira over the issue-body-parsed key once a PR exists", async () => {
+  const runGh = async (args: string[]) => {
+    if (args[0] === "pr") {
+      return JSON.stringify([
+        {
+          number: 5,
+          state: "OPEN",
+          url: "https://x/pr/5",
+          body: "Closes #9",
+          reviewDecision: "APPROVED",
+          statusCheckRollup: [{ conclusion: "SUCCESS" }],
+          title: "t",
+        },
+      ]);
+    }
+    return JSON.stringify({
+      body: "JIRA: SP-STALE\n- [x] done",
+      url: "https://x/issues/9",
+    });
+  };
+  const stage = await resolveStage("o/r", "feat/x", {
+    runGh,
+    loopState: { jira: "SP-FRESH" },
+  });
+  assert.equal(
+    stage.jiraKey,
+    "SP-FRESH",
+    "state.jira must win over the regex-parsed marker",
+  );
 });

@@ -11,8 +11,12 @@ pi extensions I write myself. Loaded from `~/.pi/agent/extensions/`.
 - **`loop-metrics/`** — `/loop-stats`: per-task AI usage console for
   `/loop`-managed repos. Task identity is the current git branch, scoped to
   repos with `.loop/config.json`; metrics (tokens, cost, duration, tool calls)
-  accumulate per turn into a `node:sqlite` store, and the dashboard adds a
-  best-effort, GitHub-derived ship-gate stage on top.
+  accumulate per turn into a `node:sqlite` store, bucketed by a coarse stage
+  (spec/plan, implementing, shipping) derived for free from
+  `.loop/state/<branch>.json`, with a JIRA key attributed from the same
+  state. The dashboard adds a live, GitHub-derived ship-gate label on top,
+  and posts a low-frequency rollup comment (updated in place, never
+  per-turn) to the tracked GH issue on each detected stage transition.
 
 Each subdirectory has its own `package.json`/`tsconfig.json`/tests for local
 development; only the runtime `.ts` files ship to `~/.pi/agent/extensions/<name>/`

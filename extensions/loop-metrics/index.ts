@@ -8,6 +8,7 @@
  */
 
 import { execFile } from "node:child_process";
+import * as path from "node:path";
 import type {
   ExtensionAPI,
   ExtensionCommandContext,
@@ -21,6 +22,8 @@ import {
 } from "@earendil-works/pi-tui";
 import { buildDashboardItems } from "./dashboard.ts";
 import { getRepoContext } from "./git.ts";
+import { parseIssueNumber, postRollup } from "./gh-rollup.ts";
+import { findLoopDir, localStageBucket, readLoopState } from "./loop-state.ts";
 import { isLoopRepo } from "./scope.ts";
 import { resolveStage, type StageInfo } from "./stage.ts";
 import { listTasks, recordTurn } from "./store.ts";
@@ -29,6 +32,7 @@ import { taskKey, type TurnDelta, zeroDelta } from "./types.ts";
 interface InFlightTurn {
   repoSlug: string;
   branch: string;
+  repoRoot: string;
   cwd: string;
   startedAt: number;
   delta: TurnDelta;
@@ -72,13 +76,20 @@ async function runDashboard(ctx: ExtensionCommandContext): Promise<void> {
       );
       loader.onAbort = () => done(new Map());
       Promise.all(
-        relevantTasks.map(
-          async (t) =>
-            [
-              taskKey(t.repoSlug, t.branch),
-              await resolveStage(t.repoSlug, t.branch),
-            ] as const,
-        ),
+        relevantTasks.map(async (t) => {
+          // Each task's own cwd is the right anchor for its .loop/ dir, not
+          // the current session's repoRoot — a task recorded from a
+          // different worktree of the same repo has its own, separate
+          // .loop/ (see loop-state.ts's findLoopDir doc comment).
+          const loopDirPath = findLoopDir(t.cwd);
+          const loopState = loopDirPath
+            ? readLoopState(loopDirPath, t.branch)
+            : undefined;
+          return [
+            taskKey(t.repoSlug, t.branch),
+            await resolveStage(t.repoSlug, t.branch, { loopState }),
+          ] as const;
+        }),
       )
         .then((entries) => done(new Map(entries)))
         .catch(() => done(new Map()));
@@ -155,6 +166,7 @@ export default function loopMetricsExtension(pi: ExtensionAPI) {
       currentTurn = {
         repoSlug: repo.repoSlug,
         branch: repo.branch,
+        repoRoot: repo.repoRoot,
         cwd: ctx.cwd,
         startedAt: event.timestamp,
         delta: zeroDelta(),
@@ -195,12 +207,32 @@ export default function loopMetricsExtension(pi: ExtensionAPI) {
     if (!turn) return;
     turn.delta.durationMs = Date.now() - turn.startedAt;
     try {
-      recordTurn({
+      // .loop/config.json's own existence was already confirmed at
+      // turn_start (isLoopRepo), so .loop/ itself is at repoRoot directly —
+      // no need to re-walk with findLoopDir here.
+      const state = readLoopState(
+        path.join(turn.repoRoot, ".loop"),
+        turn.branch,
+      );
+      const { task, transitioned } = recordTurn({
         repoSlug: turn.repoSlug,
         branch: turn.branch,
         cwd: turn.cwd,
         delta: turn.delta,
+        stageBucket: localStageBucket(state),
+        jiraKey: state?.jira,
       });
+      // Fire-and-forget: a GH rollup update must never block or fail a
+      // turn. Only on a real stage transition (see gh-rollup.ts's file
+      // header for why this is not done per-turn), and only when there is
+      // a tracked issue to post to yet.
+      const issueNumber = parseIssueNumber(state?.issue);
+      if (transitioned && issueNumber !== undefined) {
+        postRollup(turn.repoSlug, issueNumber, task).catch(() => {
+          /* postRollup is already best-effort internally; this catch only
+           * guards against an unexpected throw escaping that contract. */
+        });
+      }
     } catch (err) {
       console.error("[loop-metrics] failed to record turn:", err);
     }

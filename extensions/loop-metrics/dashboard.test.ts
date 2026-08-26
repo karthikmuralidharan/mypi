@@ -17,6 +17,7 @@ function makeTask(overrides: Partial<TaskStats>): TaskStats {
     toolCalls: delta.toolCalls,
     tokens: delta.tokens,
     cost: delta.cost,
+    stageBreakdown: {},
     ...overrides,
   };
 }

@@ -1,21 +1,28 @@
 /**
- * Best-effort ship-gate stage, derived entirely from `gh` (GitHub CLI) —
- * deliberately GitHub-only, per the scoping decision made with the user
- * (live JIRA status would need Atlassian credentials this extension doesn't
- * otherwise require; a JIRA key is still surfaced when the loop skill wrote
- * its `JIRA: <KEY>` marker into the issue body, just not queried live).
+ * Stage resolution for the /loop-stats dashboard, in two layers:
  *
- * SCOPE CUT, stated plainly: without a stored branch->issue mapping (the loop
- * skill never persists one — see `docs/OMP-PORT-PLAN.md` investigation), a
- * branch with no PR yet cannot be reliably distinguished between Stage 0
- * (no ticket) and Stage 4-7 (ticket exists, still implementing). Guessing via
- * title/keyword search against the branch name would produce false-positive
- * matches on unrelated issues, which is worse than admitting the limit. So:
- * no PR -> "no PR yet", full stop. Once a PR exists, `Closes #<n>` in its body
- * reliably resolves the linked issue for checklist + JIRA-key parsing.
+ * 1. PRE-PR (loop Stage 0-7): no PR-derived signal exists yet, so this is
+ *    derived from `.loop/state/<branch>.json` alone (see loop-state.ts) --
+ *    a local fs read, no `gh` call. Coarser than the PR-derived layer below,
+ *    but it is the only signal available before a PR exists.
+ * 2. PR-DERIVED (loop Stage 8-10): the original mechanism this file always
+ *    had -- `gh` PR + linked-issue lookup, review decision, CI rollup,
+ *    checklist completion. Unchanged from before, except that a JIRA key
+ *    already known from state (authoritative -- written directly by `sync
+ *    mirror-jira`, not regex-parsed from free text) is preferred over the
+ *    one parsed out of the issue body when both are available.
+ *
+ * SCOPE CUT this replaces, stated plainly for the record: before this loop
+ * skill persisted `.loop/state/<branch>.json` (see docs/OMP-PORT-PLAN.md's
+ * original investigation), a branch with no PR yet genuinely could not be
+ * told apart between Stage 0 (no ticket) and Stage 4-7 (ticket exists,
+ * still implementing) without guessing via title/keyword search -- worse
+ * than admitting the limit. The state file now records exactly the facts
+ * (`.issue`, `.pr`, gate approvals) needed to tell those apart for free.
  */
 
 import { execFile } from "node:child_process";
+import { localStageBucket, type LoopState } from "./loop-state.ts";
 
 export interface StageInfo {
   label: string;
@@ -132,10 +139,29 @@ export function stageFromPr(pr: GhPr, issue?: GhIssue): StageInfo {
   return { label, url: pr.url, checklist, jiraKey };
 }
 
+/**
+ * Pre-PR stage label, derived from `.loop/state/<branch>.json` alone (no
+ * `gh` call -- see loop-state.ts's `localStageBucket`). Used only when
+ * `resolveStage` finds no PR at all; once a PR exists, `stageFromPr` above
+ * takes over with its finer-grained, PR-derived label.
+ */
+export function stageFromLoopState(state: LoopState | undefined): StageInfo {
+  const bucket = localStageBucket(state);
+  let label: string;
+  if (bucket !== "spec_plan") {
+    label = "implementing (Stage 5-7, no PR yet)";
+  } else if (state?.gate1?.approved) {
+    label = "plan approved · pre-issue (Stage 2-4)";
+  } else {
+    label = "spec/plan (Stage 0-2, pre-GATE 1)";
+  }
+  return { label, jiraKey: state?.jira };
+}
+
 export async function resolveStage(
   repoSlug: string,
   branch: string,
-  opts: { runGh?: RunGh; timeoutMs?: number } = {},
+  opts: { runGh?: RunGh; timeoutMs?: number; loopState?: LoopState } = {},
 ): Promise<StageInfo> {
   const timeoutMs = opts.timeoutMs ?? 4000;
   const runGh =
@@ -157,7 +183,15 @@ export async function resolveStage(
       "1",
     ]);
     const prs = JSON.parse(prJson) as GhPr[];
-    if (prs.length === 0) return { label: "no PR yet" };
+    if (prs.length === 0) {
+      // No PR-derived signal exists yet. Before state.ts existed, this was
+      // always "no PR yet" full stop -- keep that exact fallback when no
+      // loopState is passed (backward compatible), and use the richer,
+      // state-derived label when it is available.
+      return opts.loopState !== undefined
+        ? stageFromLoopState(opts.loopState)
+        : { label: "no PR yet" };
+    }
 
     const pr = prs[0];
     const issueNumber = parseClosesIssueNumber(pr.body);
@@ -178,7 +212,11 @@ export async function resolveStage(
         /* issue lookup is a nice-to-have (checklist/JIRA key); PR status stands without it */
       }
     }
-    return stageFromPr(pr, issue);
+    const stage = stageFromPr(pr, issue);
+    // state.jira is authoritative (written directly by `sync mirror-jira`);
+    // prefer it over the regex-parsed marker when both are known.
+    if (opts.loopState?.jira) stage.jiraKey = opts.loopState.jira;
+    return stage;
   } catch {
     return { label: "unknown" };
   }

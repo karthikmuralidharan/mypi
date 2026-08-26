@@ -19,4 +19,5 @@ recordTurn({
   cost: { input: 0.01, output: 0.01, cacheRead: 0, cacheWrite: 0, total: 0.02 },
   toolCalls: { total: 1, byName: { read: 1 } },
  },
+ stageBucket: "implementing",
 });

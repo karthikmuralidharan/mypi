@@ -6,7 +6,13 @@ import * as path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { getTask, listTasks, mergeTask, recordTurn } from "./store.ts";
+import {
+  getTask,
+  isStageTransition,
+  listTasks,
+  mergeTask,
+  recordTurn,
+} from "./store.ts";
 import { zeroCost, zeroDelta, zeroTokens, zeroToolCalls } from "./types.ts";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -37,6 +43,7 @@ test("mergeTask creates a fresh task on the first turn", () => {
       branch: "feat/x",
       cwd: "/tmp/x",
       delta: { ...zeroDelta(), durationMs: 500 },
+      stageBucket: "implementing",
     },
     "2026-01-01T00:00:00.000Z",
   );
@@ -71,6 +78,7 @@ test("mergeTask accumulates duration, turns, tokens, cost, and tool calls additi
         },
         toolCalls: { total: 2, byName: { read: 2 } },
       },
+      stageBucket: "implementing",
     },
     "2026-01-01T00:00:00.000Z",
   );
@@ -92,6 +100,7 @@ test("mergeTask accumulates duration, turns, tokens, cost, and tool calls additi
         },
         toolCalls: { total: 1, byName: { edit: 1 } },
       },
+      stageBucket: "implementing",
     },
     "2026-01-01T00:01:00.000Z",
   );
@@ -113,6 +122,7 @@ test("mergeTask merges byName counts for the same tool across turns", () => {
       branch: "b",
       cwd: "/x",
       delta: { ...zeroDelta(), toolCalls: { total: 3, byName: { read: 3 } } },
+      stageBucket: "implementing",
     },
     "t0",
   );
@@ -123,10 +133,132 @@ test("mergeTask merges byName counts for the same tool across turns", () => {
       branch: "b",
       cwd: "/x",
       delta: { ...zeroDelta(), toolCalls: { total: 2, byName: { read: 2 } } },
+      stageBucket: "implementing",
     },
     "t1",
   );
   assert.deepEqual(second.toolCalls.byName, { read: 5 });
+});
+
+test("mergeTask keeps jiraKey once known, even if a later turn omits it", () => {
+  const first = mergeTask(
+    undefined,
+    {
+      repoSlug: "o/r",
+      branch: "b",
+      cwd: "/x",
+      delta: zeroDelta(),
+      stageBucket: "implementing",
+      jiraKey: "SWONE-1",
+    },
+    "t0",
+  );
+  assert.equal(first.jiraKey, "SWONE-1");
+  const second = mergeTask(
+    first,
+    {
+      repoSlug: "o/r",
+      branch: "b",
+      cwd: "/x",
+      delta: zeroDelta(),
+      stageBucket: "implementing",
+    },
+    "t1",
+  );
+  assert.equal(
+    second.jiraKey,
+    "SWONE-1",
+    "a later turn without jiraKey must not erase the known one",
+  );
+});
+
+test("mergeTask overwrites jiraKey when a newer value is provided", () => {
+  const first = mergeTask(
+    undefined,
+    {
+      repoSlug: "o/r",
+      branch: "b",
+      cwd: "/x",
+      delta: zeroDelta(),
+      stageBucket: "implementing",
+      jiraKey: "SWONE-1",
+    },
+    "t0",
+  );
+  const second = mergeTask(
+    first,
+    {
+      repoSlug: "o/r",
+      branch: "b",
+      cwd: "/x",
+      delta: zeroDelta(),
+      stageBucket: "shipping",
+      jiraKey: "SWONE-2",
+    },
+    "t1",
+  );
+  assert.equal(second.jiraKey, "SWONE-2");
+});
+
+test("mergeTask accumulates stageBreakdown per bucket independently", () => {
+  const first = mergeTask(
+    undefined,
+    {
+      repoSlug: "o/r",
+      branch: "b",
+      cwd: "/x",
+      delta: {
+        ...zeroDelta(),
+        durationMs: 100,
+        tokens: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, total: 2 },
+      },
+      stageBucket: "spec_plan",
+    },
+    "t0",
+  );
+  const second = mergeTask(
+    first,
+    {
+      repoSlug: "o/r",
+      branch: "b",
+      cwd: "/x",
+      delta: {
+        ...zeroDelta(),
+        durationMs: 50,
+        tokens: { input: 3, output: 3, cacheRead: 0, cacheWrite: 0, total: 6 },
+      },
+      stageBucket: "implementing",
+    },
+    "t1",
+  );
+  const third = mergeTask(
+    second,
+    {
+      repoSlug: "o/r",
+      branch: "b",
+      cwd: "/x",
+      delta: {
+        ...zeroDelta(),
+        durationMs: 25,
+        tokens: { input: 5, output: 5, cacheRead: 0, cacheWrite: 0, total: 10 },
+      },
+      stageBucket: "implementing",
+    },
+    "t2",
+  );
+  // spec_plan: one turn, untouched by the later implementing-bucket turns.
+  assert.equal(third.stageBreakdown.spec_plan?.turns, 1);
+  assert.equal(third.stageBreakdown.spec_plan?.durationMs, 100);
+  assert.equal(third.stageBreakdown.spec_plan?.tokens.total, 2);
+  // implementing: two turns, summed.
+  assert.equal(third.stageBreakdown.implementing?.turns, 2);
+  assert.equal(third.stageBreakdown.implementing?.durationMs, 75);
+  assert.equal(third.stageBreakdown.implementing?.tokens.total, 16);
+  // shipping: never touched, absent rather than a zeroed placeholder.
+  assert.equal(third.stageBreakdown.shipping, undefined);
+  // Total across the task still sums every turn, same as before this change.
+  assert.equal(third.turns, 3);
+  assert.equal(third.durationMs, 175);
 });
 
 // ---- SQLite-backed store: real filesystem, real DB file ----
@@ -138,11 +270,15 @@ test("recordTurn then listTasks/getTask round-trips correctly", () => {
       branch: "feat/a",
       cwd: "/tmp/a",
       delta: { ...zeroDelta(), durationMs: 42 },
+      stageBucket: "implementing",
+      jiraKey: "SWONE-7",
     });
     const task = getTask("o/r", "feat/a");
     assert.ok(task);
     assert.equal(task?.durationMs, 42);
     assert.equal(task?.turns, 1);
+    assert.equal(task?.jiraKey, "SWONE-7");
+    assert.equal(task?.stageBreakdown.implementing?.turns, 1);
     assert.equal(listTasks().length, 1);
   });
 });
@@ -154,12 +290,14 @@ test("recordTurn keeps separate branches as separate tasks", () => {
       branch: "feat/a",
       cwd: "/tmp/a",
       delta: zeroDelta(),
+      stageBucket: "implementing",
     });
     recordTurn({
       repoSlug: "o/r",
       branch: "feat/b",
       cwd: "/tmp/b",
       delta: zeroDelta(),
+      stageBucket: "implementing",
     });
     assert.equal(listTasks().length, 2);
   });
@@ -179,6 +317,7 @@ test("recordTurn survives a corrupt tool_calls_by_name JSON blob on read", () =>
       branch: "feat/a",
       cwd: "/tmp/a",
       delta: zeroDelta(),
+      stageBucket: "implementing",
     });
     // Directly corrupt the byName column to prove rowToTaskStats degrades gracefully.
     const db = new DatabaseSync(
@@ -190,6 +329,99 @@ test("recordTurn survives a corrupt tool_calls_by_name JSON blob on read", () =>
     db.close();
     const task = getTask("o/r", "feat/a");
     assert.deepEqual(task?.toolCalls.byName, {});
+  });
+});
+
+test("recordTurn survives a corrupt stage_breakdown JSON blob on read", () => {
+  withDataDir(() => {
+    recordTurn({
+      repoSlug: "o/r",
+      branch: "feat/a",
+      cwd: "/tmp/a",
+      delta: zeroDelta(),
+      stageBucket: "implementing",
+    });
+    const db = new DatabaseSync(
+      path.join(process.env.PI_LOOP_METRICS_DIR ?? "", "tasks.db"),
+    );
+    db.prepare(
+      "UPDATE tasks SET stage_breakdown = 'not json' WHERE key = ?",
+    ).run("o/r::feat/a");
+    db.close();
+    const task = getTask("o/r", "feat/a");
+    assert.deepEqual(task?.stageBreakdown, {});
+  });
+});
+
+// ---- isStageTransition / recordTurn's transitioned flag ----
+
+test("isStageTransition is false for the first-ever turn (nothing to transition from)", () => {
+  assert.equal(isStageTransition(undefined, "spec_plan"), false);
+});
+
+test("isStageTransition is false when the bucket is unchanged", () => {
+  const first = mergeTask(
+    undefined,
+    {
+      repoSlug: "o/r",
+      branch: "b",
+      cwd: "/x",
+      delta: zeroDelta(),
+      stageBucket: "implementing",
+    },
+    "t0",
+  );
+  assert.equal(isStageTransition(first, "implementing"), false);
+});
+
+test("isStageTransition is true when the bucket differs from the last recorded one", () => {
+  const first = mergeTask(
+    undefined,
+    {
+      repoSlug: "o/r",
+      branch: "b",
+      cwd: "/x",
+      delta: zeroDelta(),
+      stageBucket: "implementing",
+    },
+    "t0",
+  );
+  assert.equal(isStageTransition(first, "shipping"), true);
+});
+
+test("recordTurn reports transitioned:false on the first turn and transitioned:true when the bucket changes", () => {
+  withDataDir(() => {
+    const r1 = recordTurn({
+      repoSlug: "o/r",
+      branch: "feat/a",
+      cwd: "/tmp/a",
+      delta: zeroDelta(),
+      stageBucket: "spec_plan",
+    });
+    assert.equal(r1.transitioned, false);
+
+    const r2 = recordTurn({
+      repoSlug: "o/r",
+      branch: "feat/a",
+      cwd: "/tmp/a",
+      delta: zeroDelta(),
+      stageBucket: "spec_plan",
+    });
+    assert.equal(
+      r2.transitioned,
+      false,
+      "same bucket again is not a transition",
+    );
+
+    const r3 = recordTurn({
+      repoSlug: "o/r",
+      branch: "feat/a",
+      cwd: "/tmp/a",
+      delta: zeroDelta(),
+      stageBucket: "implementing",
+    });
+    assert.equal(r3.transitioned, true);
+    assert.equal(r3.task.lastStageBucket, "implementing");
   });
 });
 

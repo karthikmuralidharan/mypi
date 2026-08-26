@@ -30,6 +30,8 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type {
+  StageBucket,
+  StageBucketStats,
   TaskStats,
   TokenUsage,
   ToolCallStats,
@@ -69,7 +71,10 @@ CREATE TABLE IF NOT EXISTS tasks (
   cost_output REAL NOT NULL DEFAULT 0,
   cost_cache_read REAL NOT NULL DEFAULT 0,
   cost_cache_write REAL NOT NULL DEFAULT 0,
-  cost_total REAL NOT NULL DEFAULT 0
+  cost_total REAL NOT NULL DEFAULT 0,
+  jira_key TEXT,
+  stage_breakdown TEXT NOT NULL DEFAULT '{}',
+  last_stage_bucket TEXT
 );
 `;
 
@@ -94,6 +99,9 @@ interface TaskRow {
   cost_cache_read: number;
   cost_cache_write: number;
   cost_total: number;
+  jira_key: string | null;
+  stage_breakdown: string;
+  last_stage_bucket: string | null;
 }
 
 function rowToTaskStats(row: TaskRow): TaskStats {
@@ -103,6 +111,13 @@ function rowToTaskStats(row: TaskRow): TaskStats {
     if (parsed && typeof parsed === "object") byName = parsed;
   } catch {
     /* corrupt byName blob — treat as empty rather than fail the whole read */
+  }
+  let stageBreakdown: Partial<Record<StageBucket, StageBucketStats>> = {};
+  try {
+    const parsed = JSON.parse(row.stage_breakdown);
+    if (parsed && typeof parsed === "object") stageBreakdown = parsed;
+  } catch {
+    /* corrupt stage_breakdown blob — treat as empty rather than fail the read */
   }
   return {
     repoSlug: row.repo_slug,
@@ -127,15 +142,33 @@ function rowToTaskStats(row: TaskRow): TaskStats {
       cacheWrite: row.cost_cache_write,
       total: row.cost_total,
     },
+    jiraKey: row.jira_key ?? undefined,
+    stageBreakdown,
+    lastStageBucket: (row.last_stage_bucket ?? undefined) as
+      | StageBucket
+      | undefined,
   };
 }
 
 /** Pure merge, exported for direct unit testing without touching the database. */
 export function mergeTask(
   existing: TaskStats | undefined,
-  input: { repoSlug: string; branch: string; cwd: string; delta: TurnDelta },
+  input: {
+    repoSlug: string;
+    branch: string;
+    cwd: string;
+    delta: TurnDelta;
+    stageBucket: StageBucket;
+    jiraKey?: string;
+  },
   nowIso: string,
 ): TaskStats {
+  const jiraKey = input.jiraKey ?? existing?.jiraKey;
+  const stageBreakdown = mergeStageBreakdown(
+    existing?.stageBreakdown ?? {},
+    input.stageBucket,
+    input.delta,
+  );
   if (!existing) {
     return {
       repoSlug: input.repoSlug,
@@ -148,6 +181,9 @@ export function mergeTask(
       toolCalls: input.delta.toolCalls,
       tokens: input.delta.tokens,
       cost: input.delta.cost,
+      jiraKey,
+      stageBreakdown,
+      lastStageBucket: input.stageBucket,
     };
   }
   return {
@@ -159,7 +195,49 @@ export function mergeTask(
     toolCalls: sumToolCalls(existing.toolCalls, input.delta.toolCalls),
     tokens: sumAmounts(existing.tokens, input.delta.tokens),
     cost: sumAmounts(existing.cost, input.delta.cost),
+    jiraKey,
+    stageBreakdown,
+    lastStageBucket: input.stageBucket,
   };
+}
+
+/** True when `input.stageBucket` differs from the task's previously recorded
+ * bucket -- a real transition, not the first-ever turn (which is not a
+ * "transition" from anything). Exported so index.ts's turn_end handler can
+ * decide whether to post a GH rollup update without duplicating this logic. */
+export function isStageTransition(
+  existing: TaskStats | undefined,
+  stageBucket: StageBucket,
+): boolean {
+  return (
+    existing?.lastStageBucket !== undefined &&
+    existing.lastStageBucket !== stageBucket
+  );
+}
+
+/** Sums `delta` into `bucket`'s running stats, creating it on first use. Pure. */
+function mergeStageBreakdown(
+  existing: Partial<Record<StageBucket, StageBucketStats>>,
+  bucket: StageBucket,
+  delta: TurnDelta,
+): Partial<Record<StageBucket, StageBucketStats>> {
+  const prior = existing[bucket];
+  const next: StageBucketStats = prior
+    ? {
+        stage: bucket,
+        turns: prior.turns + 1,
+        durationMs: prior.durationMs + delta.durationMs,
+        tokens: sumAmounts(prior.tokens, delta.tokens),
+        cost: sumAmounts(prior.cost, delta.cost),
+      }
+    : {
+        stage: bucket,
+        turns: 1,
+        durationMs: delta.durationMs,
+        tokens: delta.tokens,
+        cost: delta.cost,
+      };
+  return { ...existing, [bucket]: next };
 }
 
 function sumAmounts(a: TokenUsage, b: TokenUsage): TokenUsage {
@@ -199,30 +277,32 @@ export function recordTurn(input: {
   branch: string;
   cwd: string;
   delta: TurnDelta;
-}): void {
-  withDb((db) => {
+  stageBucket: StageBucket;
+  jiraKey?: string;
+}): { task: TaskStats; transitioned: boolean } {
+  return withDb((db) => {
     const key = taskKey(input.repoSlug, input.branch);
     db.exec("BEGIN IMMEDIATE");
     try {
       const row = db
         .prepare("SELECT * FROM tasks WHERE key = :key")
         .get({ key }) as TaskRow | undefined;
-      const merged = mergeTask(
-        row ? rowToTaskStats(row) : undefined,
-        input,
-        new Date().toISOString(),
-      );
+      const existing = row ? rowToTaskStats(row) : undefined;
+      const transitioned = isStageTransition(existing, input.stageBucket);
+      const merged = mergeTask(existing, input, new Date().toISOString());
       db.prepare(
         `INSERT INTO tasks (
            key, repo_slug, branch, cwd, first_seen_iso, last_active_iso, duration_ms, turns,
            tool_calls_total, tool_calls_by_name,
            tokens_input, tokens_output, tokens_cache_read, tokens_cache_write, tokens_total,
-           cost_input, cost_output, cost_cache_read, cost_cache_write, cost_total
+           cost_input, cost_output, cost_cache_read, cost_cache_write, cost_total,
+           jira_key, stage_breakdown, last_stage_bucket
          ) VALUES (
            :key, :repoSlug, :branch, :cwd, :firstSeenIso, :lastActiveIso, :durationMs, :turns,
            :toolCallsTotal, :toolCallsByName,
            :tokensInput, :tokensOutput, :tokensCacheRead, :tokensCacheWrite, :tokensTotal,
-           :costInput, :costOutput, :costCacheRead, :costCacheWrite, :costTotal
+           :costInput, :costOutput, :costCacheRead, :costCacheWrite, :costTotal,
+           :jiraKey, :stageBreakdown, :lastStageBucket
          )
          ON CONFLICT(key) DO UPDATE SET
            cwd = excluded.cwd,
@@ -240,7 +320,10 @@ export function recordTurn(input: {
            cost_output = excluded.cost_output,
            cost_cache_read = excluded.cost_cache_read,
            cost_cache_write = excluded.cost_cache_write,
-           cost_total = excluded.cost_total`,
+           cost_total = excluded.cost_total,
+           jira_key = excluded.jira_key,
+           stage_breakdown = excluded.stage_breakdown,
+           last_stage_bucket = excluded.last_stage_bucket`,
       ).run({
         key,
         repoSlug: merged.repoSlug,
@@ -262,8 +345,12 @@ export function recordTurn(input: {
         costCacheRead: merged.cost.cacheRead,
         costCacheWrite: merged.cost.cacheWrite,
         costTotal: merged.cost.total,
+        jiraKey: merged.jiraKey ?? null,
+        stageBreakdown: JSON.stringify(merged.stageBreakdown),
+        lastStageBucket: merged.lastStageBucket ?? null,
       });
       db.exec("COMMIT");
+      return { task: merged, transitioned };
     } catch (err) {
       db.exec("ROLLBACK");
       throw err;
@@ -273,6 +360,8 @@ export function recordTurn(input: {
 
 export function listTasks(): TaskStats[] {
   return withDb((db) => {
+    // SAFETY: `SCHEMA` and `TaskRow` are defined together in this file and
+    // kept in sync by hand -- `SELECT *` returns exactly TaskRow's columns.
     const rows = db
       .prepare("SELECT * FROM tasks")
       .all() as unknown as TaskRow[];
