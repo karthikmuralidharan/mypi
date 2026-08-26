@@ -1,7 +1,7 @@
 {
-  "lastChangelogVersion": "0.84.2",
+  "lastChangelogVersion": "0.84.3",
   "defaultProvider": "aperture",
-  "defaultModel": "us.anthropic.claude-opus-5",
+  "defaultModel": "us.anthropic.claude-sonnet-5",
   "packages": [
     "npm:pi-rtk-optimizer",
     "npm:@plannotator/pi-extension",
