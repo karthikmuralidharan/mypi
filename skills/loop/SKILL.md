@@ -3,7 +3,7 @@ name: "loop"
 description: "Repo-agnostic engineering loop: brainstorm a product spec, co-develop a technical spec with mermaid diagrams, plannotate the plan, use graphify as an LLM wiki, implement, run an internal review, add no-mock integration tests, open a PR, address Copilot review, and tail CI until green — with full GitHub-issue↔JIRA traceability. Use when the user says 'run the loop', 'loop this', 'full loop on X', or wants the end-to-end plan→ship→trace pipeline. The GitHub issue body is the source of truth for specs; JIRA mirrors the hierarchy."
 version: 1
 created: "2026-07-26"
-updated: "2026-08-26"
+updated: "2026-08-27"
 ---
 
 ## When to Use
@@ -79,6 +79,14 @@ code**. It always runs both, so a CI failure never hides an unrelated review
 problem. If it exits non-zero, fix, push, and run `ship-gate` again from the
 top. Never special-case "just a CI fix" or "just a review nit" as a reason
 to skip half the check. `ship-gate` always checks both.
+
+**Push and `ship-gate` are one action, not two steps to remember
+separately.** Every push in Stage 8 (the first one and every fix after it)
+is immediately followed by `"$EL" ship-gate` — do not push, move on to
+something else, and come back to it later. `ci-watch` treats a repo with no
+CI configured as clear rather than failing on it (checked directly against
+a real no-CI repo), so it is always safe to run right after the first push,
+before any check could plausibly exist yet.
 
 On a clear pass, `ship-gate` records the commit it passed against in
 `.loop/state/<branch>.json`. Run `"$EL" where` at any point to check that
@@ -326,20 +334,31 @@ SWONE), "In Progress" is the open-PR state and "Done" the merged state.
   `PR=$(gh pr view --json number -q .number)` then
   `"$EL" sync auto-status --jira "$JIRA" --pr "$PR"` (see "Automatic status
   sync" above — deterministic, no approval gate).
+- **Immediately run `"$EL" ship-gate`.** This first push gets the same
+  wait-for-CI-and-review treatment as every push after it (see "The ship
+  gate" above) — do not wait until Stage 9 to run it for the first time.
 - Wait for **Copilot** review, then address its comments (see
-  `ce-resolve-pr-feedback`). Push fixes — this **rearms the ship gate** (see
-  above): `ship-gate` must pass again from that push.
+  `ce-resolve-pr-feedback`). **Push fixes, then immediately run `"$EL"
+  ship-gate` again** — a push always rearms it; push and ship-gate are one
+  action here, not a step to come back to later.
 
 ### Stage 9 — Converge the ship gate
+
+Stage 8 already ran `ship-gate` after every push. This stage is the final
+checkpoint — confirm it is clear on the current commit before calling the
+loop done shipping, not a first-time run:
 
 ```bash
 "$EL" ship-gate         # ci-watch + pr-check, one call, one exit code
 ```
 
 - If it fails, the output says which side(s) failed (CI's failing-job tail,
-  and/or pr-check's outstanding-thread summary). Fix, push, and re-run
-  `ship-gate` from the top.
-- The loop is only done shipping once one `ship-gate` pass exits 0.
+  and/or pr-check's outstanding-thread summary). Fix, push, and run
+  `ship-gate` again immediately — not after doing something else first.
+- The loop is only done shipping once one `ship-gate` pass exits 0 **and**
+  `"$EL" where` reports no drift for the ship-gate line — that confirms the
+  passing commit is still the branch tip, not a stale pass from an earlier
+  push (see "Run state and resuming a session").
 
 ### Stage 10 — Close out traceability
 
@@ -385,10 +404,16 @@ Guided (human-in-the-loop, judgment-heavy — orchestrated, not scripted):
 - **Never** guess the epic — always `find-epic` and confirm.
 - **Never** treat a push as clearing only the check it was meant to fix. A
   CI-only fix can still be sitting on stale/unresolved review threads; a
-  review-only fix still needs a fresh CI run. Always re-run `ship-gate`
-  (never `ci-watch`/`pr-check` individually) after any push to the PR branch.
-  Run `"$EL" where` if unsure whether the last clear ship-gate pass still
-  covers the current commit.
+  review-only fix still needs a fresh CI run. **Every push gets an
+  immediate `"$EL" ship-gate` call** (never `ci-watch`/`pr-check`
+  individually, and never "push now, check later") — this applies to the
+  first push in Stage 8 too, not only fix-pushes. Before calling the loop
+  done shipping, also run `"$EL" where` to confirm the last clear pass still
+  matches the branch tip.
+- A repo with no CI configured is common, not an error — `ci-watch` detects
+  "no checks reported" and treats it as clear rather than failing (fixed
+  and verified directly against a real no-CI repo; earlier it reported a
+  false CI failure indistinguishable from a real one).
 - `pr-check` only sees formal reviews and line-level review threads — a
   bot/human comment posted as a plain top-level PR comment won't be caught;
   skim the PR comment stream by eye too before calling the ship gate clear.

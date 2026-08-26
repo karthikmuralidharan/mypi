@@ -7,9 +7,17 @@
 # hangs forever (then dies) on repos whose CI is anything else (e.g.
 # mcp-fabric, which runs CircleCI, not GitHub Actions).
 #
+# A repo with NO CI configured at all is a real, common case (verified
+# directly against mypi itself, which has no .github/workflows) --
+# `gh pr checks` reports "no checks reported on the '<branch>' branch" and
+# exits 1 for this, identical to an actual check failure, even with --json.
+# This script treats that exact message as "no CI configured" (non-blocking,
+# exit 0), not a failure -- there is no cleaner structured signal gh offers
+# to tell the two cases apart.
+#
 # Usage: ci-watch.sh [branch]   (defaults to current branch)
-# Exit:  0 if all checks passed. Non-zero if any failed, none exist yet, or
-#        no open PR was found for branch (see `gh help exit-codes`).
+# Exit:  0 if all checks passed, or no CI is configured for this repo.
+#        Non-zero if any check failed or no open PR was found for branch.
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib/common.sh
@@ -21,6 +29,15 @@ log "watching CI for $repo @ $branch (via gh pr checks — provider-agnostic)"
 
 pr_num="$(gh pr list --repo "$repo" --head "$branch" --json number -q '.[0].number' 2>/dev/null || true)"
 [ -n "$pr_num" ] || die "no open PR found for branch $branch (repo $repo) — ci-watch reads checks off a PR, open one first"
+
+# Point-in-time probe first: if this PR has zero checks configured at all,
+# --watch would otherwise just fail once with the same "no checks reported"
+# message. Detect that case up front and treat it as N/A, not a failure.
+probe="$(gh pr checks "$pr_num" --repo "$repo" 2>&1)" || true
+if grep -q "no checks reported on" <<<"$probe"; then
+    log "no CI checks configured for $repo — nothing to wait for, treating as clear"
+    exit 0
+fi
 
 echo "----- watching CI for PR #$pr_num -----"
 rc=0
