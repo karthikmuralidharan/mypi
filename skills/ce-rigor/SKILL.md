@@ -73,21 +73,26 @@ NO PRODUCTION CODE WITHOUT A FAILING TEST FIRST
 Wrote implementation before the test? **Delete it and start over from the test.** Don't keep it "as reference," don't "adapt" it — implement fresh from the test. The cycle, per behavior in the unit's test scenarios:
 
 ### RED — write one failing test
+
 - One behavior, clear name, real code (mocks only when genuinely unavoidable).
 - Derive it from the unit's enumerated Test scenarios. If a scenario category that applies (happy path / edge / error / integration) is missing, add it before writing code — do not invent thin coverage.
 
 ### Verify RED — watch it fail (MANDATORY, never skip)
+
 - Run the test. Confirm it **fails** (not errors) and fails for the **expected reason** (feature missing), not a typo or import error.
 - **If it passes immediately:** you are testing existing behavior — the test is wrong. Fix the test.
 - **Core principle:** *If you didn't watch the test fail, you don't know that it tests the right thing.* This single step is what separates "tests exist" from TDD. It is the step compound engineering omits — do not omit it here.
 
 ### GREEN — minimal code to pass
+
 - Write the simplest code that makes the test pass. No extra options, flags, or "while I'm here" features (YAGNI).
 
 ### Verify GREEN — watch it pass
+
 - The new test passes, the **whole relevant suite stays green**, and output is pristine (no new warnings/errors). If other tests broke, fix the code now — not the tests.
 
 ### REFACTOR — clean up while green
+
 - Remove duplication, improve names, extract helpers. Keep tests green. Add no new behavior.
 
 Repeat RED→GREEN→REFACTOR for the next behavior until the unit's scenarios are covered.
@@ -103,11 +108,13 @@ After Gate 1 is green for the whole unit, the unit is **still not complete**. Ru
 Prefer dispatching each review to a **fresh subagent** (via the `subagent` tool / `pi-subagents`) so the reviewer has clean context and no authorship bias. Give the reviewer the unit's spec (Goal, Requirements, Test scenarios, Verification) and the diff/SHAs — not your session history. If subagents are unavailable, perform the review yourself but treat the findings as blocking.
 
 ### Stage A — Spec compliance
+
 Reviewer answers: does the diff implement exactly the unit's spec — nothing missing, nothing extra?
 - **Issues found → fix → re-review.** Repeat until ✅. Do not proceed to Stage B with open spec issues.
 - "Close enough" is not ✅. Extra unrequested features are a spec failure too (remove them or get them added to scope).
 
 ### Stage B — Code quality
+
 Only after Stage A is ✅. Reviewer checks: clarity, duplication, naming, error handling, the System-Wide Test Check (callbacks/middleware/state two levels out), and whether at least one integration test exercises the real chain (not all-mocks).
 - **Issues found → fix → re-review.** Repeat until ✅.
 
