@@ -140,6 +140,103 @@ gh_repo() {
     printf '%s' "$r"
 }
 
+# ---------------------------------------------------------------------------
+# Run state: one JSON file per branch at .loop/state/<branch>.json (slashes
+# become __ for a safe filename). Tracks facts a long-running /loop session
+# must not lose across turns, compaction, or a resumed session: the two hard
+# gates' approval record, the tracked issue/JIRA key, and the last commit
+# that cleared the ship gate. `loop where` reads this back and cross-checks
+# it against live gh/JIRA/git state — see status.sh.
+#
+# Every writer here is a small, composable primitive in the same style as
+# cfg(): state_set/state_set_json write ONE field with an atomic merge (tmp
+# file + rename), so a script interrupted mid-write cannot corrupt the file
+# for the next reader. Values always go through jq --arg/--argjson, never
+# string interpolation, so a free-text --note field with quotes or
+# backslashes cannot break the JSON or inject into the filter.
+# ---------------------------------------------------------------------------
+
+# state_file [branch] — path to a branch's run-state file (default: current
+# branch). Dies with a clear message on detached HEAD, since state needs a
+# stable key to bucket by.
+state_file() {
+    local branch="${1:-}"
+    [ -n "$branch" ] || branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)" || die "not in a git repository"
+    [ -n "$branch" ] && [ "$branch" != "HEAD" ] || die "detached HEAD has no branch to key state on — pass one explicitly"
+    local dir
+    dir="${LOOP_DIR:?run 'loop setup' first}/state"
+    mkdir -p "$dir"
+    printf '%s/%s.json' "$dir" "${branch//\//__}"
+}
+
+# state_read PATH [default] [branch] — read one jq path from a branch's
+# state file. Missing file or missing path both fall back to [default],
+# same contract as cfg().
+state_read() {
+    local path="$1" def="${2:-}" branch="${3:-}"
+    local f
+    f="$(state_file "$branch" 2>/dev/null)" || {
+        printf '%s' "$def"
+        return
+    }
+    [ -f "$f" ] || {
+        printf '%s' "$def"
+        return
+    }
+    local v
+    v="$(jq -r "$path // empty" "$f" 2>/dev/null)"
+    printf '%s' "${v:-$def}"
+}
+
+# state_set FIELD VALUE [branch] — set one top-level field to a string,
+# merged atomically into the existing state (creating it on first write).
+state_set() {
+    local field="$1" value="$2" branch="${3:-}"
+    local f cur tmp
+    f="$(state_file "$branch")"
+    cur='{}'
+    [ -f "$f" ] && cur="$(cat "$f")"
+    tmp="$f.tmp.$$"
+    printf '%s' "$cur" | jq --arg v "$value" ".${field} = \$v" >"$tmp" || {
+        rm -f "$tmp"
+        die "state_set: jq failed for field '$field'"
+    }
+    mv "$tmp" "$f"
+}
+
+# state_set_json FIELD JSON [branch] — set one top-level field to a JSON
+# value (object, bool, number), e.g. state_set_json gate1 '{"approved":true}'.
+state_set_json() {
+    local field="$1" json="$2" branch="${3:-}"
+    local f cur tmp
+    f="$(state_file "$branch")"
+    cur='{}'
+    [ -f "$f" ] && cur="$(cat "$f")"
+    tmp="$f.tmp.$$"
+    printf '%s' "$cur" | jq --argjson v "$json" ".${field} = \$v" >"$tmp" || {
+        rm -f "$tmp"
+        die "state_set_json: jq failed for field '$field' (is the JSON valid?)"
+    }
+    mv "$tmp" "$f"
+}
+
+# require_gate N — die unless gate N (1 or 2) is recorded as passed in this
+# branch's state. LOOP_SKIP_GATE_CHECK=1 bypasses the check (loud, logged) —
+# for standalone use of sync.sh outside the full /loop pipeline (the
+# integration-test workflow in eng-loop-jira-gh-sync-tooling's own
+# Verification section calls sync bootstrap directly), not for skipping a
+# real gate on a real run.
+require_gate() {
+    local n="$1"
+    if [ "${LOOP_SKIP_GATE_CHECK:-}" = "1" ]; then
+        warn "LOOP_SKIP_GATE_CHECK=1 -- gate $n check bypassed"
+        return 0
+    fi
+    local approved
+    approved="$(state_read ".gate${n}.approved" false)"
+    [ "$approved" = "true" ] || die "gate $n is not recorded as passed. Get human approval, then run: loop gate-pass $n. (Standalone or test use: set LOOP_SKIP_GATE_CHECK=1.)"
+}
+
 # require CMD... — assert each command exists.
 require() { for c in "$@"; do command -v "$c" >/dev/null 2>&1 || die "missing required tool: $c"; done; }
 
