@@ -12,7 +12,7 @@ decision does not have to be re-derived later.
 | `config/mcp.json` | MCP server registrations | Hand-maintained. |
 | `config/AGENTS.md` | Global agent instructions | Hand-maintained (currently a compound-plugin block). |
 | `config/npm/package*.json` | Exact pinned versions of all 26 pi extensions | `package-lock.json` makes the extension set byte-reproducible. |
-| `config/extensions/` | Config files *for* installed extensions (aperture, pi-rtk-optimizer) | Settings, not code. Not regenerable — onboarding state and gateway URL live here. |
+| `config/extensions/` | Config files *for* installed extensions (pi-rtk-optimizer) | Settings, not code. Not regenerable — onboarding state lives here. |
 | `extensions/` | Extensions I write myself | Authored work. Currently empty; see below. |
 | `skills/` | The 7 skills I authored | Authored work, exists nowhere else. |
 | `manifests/my-skills.txt` | Allowlist separating my skills from plugin skills | Single source of truth for both scripts. |

@@ -55,8 +55,10 @@ echo "==> shell integration"
 if command -v fish >/dev/null 2>&1; then
   [[ -f "$REPO/config/fish/pi-fff-mode.fish" ]] &&
     install_file "$REPO/config/fish/pi-fff-mode.fish" "$FISH_CONFD/pi-fff-mode.fish"
+  [[ -f "$REPO/config/fish/go-bin-path.fish" ]] &&
+    install_file "$REPO/config/fish/go-bin-path.fish" "$FISH_CONFD/go-bin-path.fish"
 else
-  echo "    skip pi-fff-mode.fish (fish not installed)"
+  echo "    skip fish conf.d files (fish not installed)"
 fi
 
 # hermes does no tilde expansion, so childExtensionPaths must be absolute. Re-root
@@ -81,8 +83,6 @@ install_file "$REPO/config/npm/package.json" "$A/npm/package.json"
 install_file "$REPO/config/npm/package-lock.json" "$A/npm/package-lock.json"
 
 echo "==> extension config"
-[[ -f "$REPO/config/extensions/aperture.json" ]] &&
-  install_file "$REPO/config/extensions/aperture.json" "$A/extensions/aperture.json"
 [[ -f "$REPO/config/extensions/pi-rtk-optimizer/config.json" ]] &&
   install_file "$REPO/config/extensions/pi-rtk-optimizer/config.json" \
     "$A/extensions/pi-rtk-optimizer/config.json"
@@ -99,9 +99,16 @@ for d in "$REPO"/extensions/*/; do
   name="$(basename "$d")"
   [[ -f "$d/index.ts" ]] || continue
   dest="$A/extensions/$name"
-  if [[ -e "$dest" && $FORCE -eq 0 && ! -e "$dest.pre-bootstrap" ]]; then
-    cp -R "$dest" "$dest.pre-bootstrap"
-    echo "    backed up $name -> $name.pre-bootstrap"
+  # Backups live OUTSIDE $A/extensions/, never as a sibling directory in it:
+  # pi's extension loader treats any subdirectory there with an index.ts as
+  # a loadable extension regardless of its name, so a same-named
+  # ".pre-bootstrap" sibling used to get loaded too and duplicate-register
+  # every tool the real extension already registered.
+  backup="$A/extensions-pre-bootstrap/$name"
+  if [[ -e "$dest" && $FORCE -eq 0 && ! -e "$backup" ]]; then
+    mkdir -p "$(dirname "$backup")"
+    cp -R "$dest" "$backup"
+    echo "    backed up $name -> extensions-pre-bootstrap/$name"
   fi
   rm -rf "$dest"
   mkdir -p "$dest"
@@ -176,17 +183,23 @@ cat <<'EOF'
 ────────────────────────────────────────────────────────────────
 Restore complete. Manual steps that cannot be automated:
 
-  1. Auth       — run `pi` and sign in; credentials live in
-                  ~/.pi/agent/auth.json (never versioned).
-  2. Trust      — pi re-prompts per directory on first use;
+  1. Auth       — run `pi` and sign in for any non-Aperture provider (e.g.
+                  ChatGPT Plus/Pro OAuth for Codex models); credentials live
+                  in ~/.pi/agent/auth.json (never versioned).
+  2. Aperture   — pi has no standing model provider anymore (see
+                  docs/BOUNDARY.md). Install the launcher:
+                    go install github.com/tailscale/aperture-cli/cmd/aperture@latest
+                  Join the tailnet (or set up bridge mode), run `aperture`,
+                  point it at the gateway on first run, then launch Pi from
+                  its menu — it injects routing per-launch and leaves
+                  ~/.pi/agent/ untouched. Running bare `pi` has no model
+                  access until this is done.
+  3. Trust      — pi re-prompts per directory on first use;
                   ~/.pi/agent/trust.json is machine-specific.
-  3. Aperture   — config/extensions/aperture.json points at a
-                  private tailnet gateway. Join the tailnet or
-                  edit baseUrl before first run.
   4. Memory     — intentionally NOT restored. See docs/BOUNDARY.md.
   5. Natives    — if memory_search errors with NODE_MODULE_VERSION,
                   see skills/rebuild-pi-native-modules/.
 
-Verify with:  pi --version && pi doctor 2>/dev/null || true
+Verify with:  pi --version && aperture --version
 ────────────────────────────────────────────────────────────────
 EOF

@@ -164,6 +164,42 @@ Not yet done, deliberately:
    into an enforcing `tool_call` hook — prose losing to code, exactly the lesson
    from OMP's `emission-guard.ts:14`.
 
+## Model routing: retired the standing Aperture extension
+
+Removed `@aliou/pi-ts-aperture` (packages 21 → 20), `config/extensions/aperture.json`,
+`defaultProvider`, `defaultModel`, and every `aperture/*` entry in `enabledModels`.
+Replaced by [`aperture-cli`](https://github.com/tailscale/aperture-cli)
+(`tailscale/aperture-cli#26` added Pi support), a separate launcher binary run
+as `aperture` instead of `pi` directly: it presents a provider/backend/model
+menu, writes a *temporary* per-launch extension registering the chosen route
+under a namespaced provider ID (`aperture-<providerID>`, never colliding with
+a built-in), execs `pi -e <tmpfile> --model ...`, and deletes the extension on
+exit — `~/.pi/agent/` (settings, auth, sessions) is never touched.
+
+Why: the standing extension was the only way `pi` reached a model at all, with
+no way to switch backend/provider without hand-editing `config/extensions/
+aperture.json` and restarting. The launcher makes that a per-launch menu
+choice instead, at the cost of a habit change: bare `pi` (not through
+`aperture`) has no model access now. Verified this is an acceptable trade
+before removing anything:
+
+- **Subagent delegation is unaffected.** `pi-subagents` runs children
+  in-process (grepped its source for a `pi` binary spawn — none), so a session
+  launched via `aperture` has its injected provider inherited by every
+  in-process subagent automatically. Nothing shells out to a second `pi`
+  process that would need its own routing.
+- **The native `amazon-bedrock` fallback does not work as a substitute.**
+  Tested directly (`pi --print --no-session --model amazon-bedrock/...`):
+  `UnrecognizedClientException: The security token included in the request is
+  invalid.` It talks to real AWS Bedrock, not the tailnet gateway, and this
+  machine's SSO profile is not the one it picks up. The `amazon-bedrock/*`
+  `enabledModels` entries were themselves served by the aperture extension's
+  own (disabled) `proxy.upstreamProviders`, not by this native path — removed
+  along with the rest of `aperture/*` for the same reason.
+
+`aperture` is `go install`ed to `~/go/bin` (not Homebrew — no formula exists),
+so `config/fish/go-bin-path.fish` puts that directory on `PATH`.
+
 ## What was deliberately not ported
 
 Per the evaluation, adding more OMP mechanisms to an unrefereed system makes

@@ -11,7 +11,8 @@ exactly where that line sits and why.
 
 ```text
 config/                     declarative pi setup
-  settings.json               provider, model, thinking level, packages[]
+  settings.json               thinking level, packages[] (no standing model
+                               provider — see "Model routing" below)
   mcp.json                    MCP server registrations
   AGENTS.md                   global agent instructions
   npm/package{,-lock}.json    exact pins for all 26 pi extensions
@@ -46,8 +47,28 @@ cd mypi && ./bootstrap.sh
 
 Flags: `--config` for config only (skip installs), `--force` to skip backups.
 
-Four things it cannot do for you, and it says so on exit: sign in, re-trust
-directories, join the tailnet the aperture gateway lives on, and restore memory.
+Four things it cannot do for you, and it says so on exit: sign in, install and
+configure the `aperture` launcher (model routing — see below), re-trust
+directories, and restore memory.
+
+## Model routing
+
+pi has no standing model provider in this config — no `defaultProvider`, no
+`aperture/*` entries in `enabledModels`. Routing instead comes from
+[`aperture`](https://github.com/tailscale/aperture-cli), a separate launcher
+binary:
+
+```bash
+go install github.com/tailscale/aperture-cli/cmd/aperture@latest
+aperture   # menu: pick provider, backend, model, then launches `pi -e <tmp>`
+```
+
+It writes a temporary, per-launch extension (registered as
+`aperture-<providerID>`, never the same ID as a built-in provider) and removes
+it on exit, so `~/.pi/agent/` — settings, auth, sessions — is never touched.
+Running bare `pi` has no model access until this is set up; see
+`docs/COHESION.md` for why the old always-on `@aliou/pi-ts-aperture` extension
+was retired in favor of this.
 
 ## Capture changes back
 
