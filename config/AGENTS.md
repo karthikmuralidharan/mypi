@@ -40,6 +40,7 @@ first actually failed.
 | Output whose size is unknown or large | `ctx_execute` | letting it land in context |
 | Run a command with short known output | `bash` | `ctx_execute` |
 | Delegate parallel work | `subagent` | mixing delegation systems in one task |
+| **Delegate work that must not touch the current working tree** | pass `worktree: true` (or `isolation: "worktree"`) explicitly on the dispatch call | trusting an agent's own `isolated:` frontmatter — it is not a supported field and is silently ignored (verified: `pi-subagents`' agent-frontmatter parser never reads it). Without the explicit flag, the subagent edits files in the same cwd as the caller, invisibly to it. |
 
 † `PI_FFF_MODE=override` (set globally via `~/.config/fish/conf.d/pi-fff-mode.fish`,
 versioned at `config/fish/pi-fff-mode.fish`) makes `@ff-labs/pi-fff` register its

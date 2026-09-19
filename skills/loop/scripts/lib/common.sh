@@ -188,36 +188,72 @@ state_read() {
     printf '%s' "${v:-$def}"
 }
 
+# State-file locking. The tmp-file + rename in state_set/state_set_json below
+# only makes the WRITE half atomic (a script killed mid-write can't corrupt
+# the file). The READ half is not protected: two /loop processes racing on
+# the same branch's state file (a main session plus a subagent or worktree
+# session touching the same branch) can each read the same snapshot, and
+# whichever one's rename lands last silently discards the other's field.
+# mkdir is the lock primitive here because it is atomic on every filesystem
+# this needs to run on — flock is not shipped on macOS by default.
+_state_lock_acquire() {
+    local lockdir="$1"
+    local attempts=0 max_attempts=100 # 100 * 0.1s = 10s
+    while ! mkdir "$lockdir" 2>/dev/null; do
+        attempts=$((attempts + 1))
+        if [ "$attempts" -ge "$max_attempts" ]; then
+            # Stale lock from a crashed/killed process -- steal it rather
+            # than wedging every future /loop call on this branch forever.
+            warn "stale state lock $lockdir (>10s) -- stealing it"
+            rmdir "$lockdir" 2>/dev/null || true
+            continue
+        fi
+        sleep 0.1
+    done
+}
+
+_state_lock_release() {
+    rmdir "$1" 2>/dev/null || true
+}
+
 # state_set FIELD VALUE [branch] — set one top-level field to a string,
 # merged atomically into the existing state (creating it on first write).
 state_set() {
     local field="$1" value="$2" branch="${3:-}"
-    local f cur tmp
+    local f cur tmp lockdir
     f="$(state_file "$branch")"
+    lockdir="$f.lock"
+    _state_lock_acquire "$lockdir"
     cur='{}'
     [ -f "$f" ] && cur="$(cat "$f")"
     tmp="$f.tmp.$$"
     printf '%s' "$cur" | jq --arg v "$value" ".${field} = \$v" >"$tmp" || {
         rm -f "$tmp"
+        _state_lock_release "$lockdir"
         die "state_set: jq failed for field '$field'"
     }
     mv "$tmp" "$f"
+    _state_lock_release "$lockdir"
 }
 
 # state_set_json FIELD JSON [branch] — set one top-level field to a JSON
 # value (object, bool, number), e.g. state_set_json gate1 '{"approved":true}'.
 state_set_json() {
     local field="$1" json="$2" branch="${3:-}"
-    local f cur tmp
+    local f cur tmp lockdir
     f="$(state_file "$branch")"
+    lockdir="$f.lock"
+    _state_lock_acquire "$lockdir"
     cur='{}'
     [ -f "$f" ] && cur="$(cat "$f")"
     tmp="$f.tmp.$$"
     printf '%s' "$cur" | jq --argjson v "$json" ".${field} = \$v" >"$tmp" || {
         rm -f "$tmp"
+        _state_lock_release "$lockdir"
         die "state_set_json: jq failed for field '$field' (is the JSON valid?)"
     }
     mv "$tmp" "$f"
+    _state_lock_release "$lockdir"
 }
 
 # require_gate N — die unless gate N (1 or 2) is recorded as passed in this
