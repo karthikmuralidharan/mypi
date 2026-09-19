@@ -283,6 +283,52 @@ test("recordTurn then listTasks/getTask round-trips correctly", () => {
   });
 });
 
+test("recordTurn migrates a pre-existing tasks table created before jira_key/stage_breakdown/last_stage_bucket existed", () => {
+  withDataDir((dir) => {
+    fs.mkdirSync(dir, { recursive: true });
+    const db = new DatabaseSync(path.join(dir, "tasks.db"));
+    // Legacy schema, verbatim from before commit b393f49 added the three newer columns.
+    db.exec(`
+      CREATE TABLE tasks (
+        key TEXT PRIMARY KEY,
+        repo_slug TEXT NOT NULL,
+        branch TEXT NOT NULL,
+        cwd TEXT NOT NULL,
+        first_seen_iso TEXT NOT NULL,
+        last_active_iso TEXT NOT NULL,
+        duration_ms INTEGER NOT NULL DEFAULT 0,
+        turns INTEGER NOT NULL DEFAULT 0,
+        tool_calls_total INTEGER NOT NULL DEFAULT 0,
+        tool_calls_by_name TEXT NOT NULL DEFAULT '{}',
+        tokens_input INTEGER NOT NULL DEFAULT 0,
+        tokens_output INTEGER NOT NULL DEFAULT 0,
+        tokens_cache_read INTEGER NOT NULL DEFAULT 0,
+        tokens_cache_write INTEGER NOT NULL DEFAULT 0,
+        tokens_total INTEGER NOT NULL DEFAULT 0,
+        cost_input REAL NOT NULL DEFAULT 0,
+        cost_output REAL NOT NULL DEFAULT 0,
+        cost_cache_read REAL NOT NULL DEFAULT 0,
+        cost_cache_write REAL NOT NULL DEFAULT 0,
+        cost_total REAL NOT NULL DEFAULT 0
+      );
+    `);
+    db.close();
+
+    recordTurn({
+      repoSlug: "o/r",
+      branch: "feat/a",
+      cwd: "/tmp/a",
+      delta: { ...zeroDelta(), durationMs: 42 },
+      stageBucket: "implementing",
+      jiraKey: "SWONE-7",
+    });
+    const task = getTask("o/r", "feat/a");
+    assert.ok(task);
+    assert.equal(task?.jiraKey, "SWONE-7");
+    assert.equal(task?.stageBreakdown.implementing?.turns, 1);
+  });
+});
+
 test("recordTurn keeps separate branches as separate tasks", () => {
   withDataDir(() => {
     recordTurn({

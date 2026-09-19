@@ -258,6 +258,34 @@ function sumToolCalls(a: ToolCallStats, b: ToolCallStats): ToolCallStats {
   return { total: a.total + b.total, byName };
 }
 
+/** Columns added to `tasks` after its initial release, in the order they were added.
+ * `CREATE TABLE IF NOT EXISTS` never alters an already-existing table, so a table
+ * created before one of these was added needs it backfilled via ALTER TABLE. */
+const ADDED_COLUMNS: Array<{ name: string; ddl: string }> = [
+  { name: "jira_key", ddl: "ALTER TABLE tasks ADD COLUMN jira_key TEXT" },
+  {
+    name: "stage_breakdown",
+    ddl: "ALTER TABLE tasks ADD COLUMN stage_breakdown TEXT NOT NULL DEFAULT '{}'",
+  },
+  {
+    name: "last_stage_bucket",
+    ddl: "ALTER TABLE tasks ADD COLUMN last_stage_bucket TEXT",
+  },
+];
+
+/** Adds any of `ADDED_COLUMNS` missing from an existing `tasks` table. No-op on a
+ * freshly created one, since `SCHEMA` already includes them. */
+function migrate(db: DatabaseSync): void {
+  const existing = new Set(
+    (db.prepare("PRAGMA table_info(tasks)").all() as Array<{ name: string }>).map(
+      (col) => col.name,
+    ),
+  );
+  for (const column of ADDED_COLUMNS) {
+    if (!existing.has(column.name)) db.exec(column.ddl);
+  }
+}
+
 /** Opens a connection with the load-bearing pragma order, runs `fn`, always closes. */
 function withDb<T>(fn: (db: DatabaseSync) => T): T {
   fs.mkdirSync(dataDir(), { recursive: true });
@@ -266,6 +294,7 @@ function withDb<T>(fn: (db: DatabaseSync) => T): T {
     db.exec("PRAGMA busy_timeout=5000"); // must precede journal_mode — see file header
     db.exec("PRAGMA journal_mode=WAL");
     db.exec(SCHEMA);
+    migrate(db);
     return fn(db);
   } finally {
     db.close();

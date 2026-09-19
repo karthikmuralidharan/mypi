@@ -25,6 +25,7 @@ import { getRepoContext } from "./git.ts";
 import { parseIssueNumber, postRollup } from "./gh-rollup.ts";
 import { findLoopDir, localStageBucket, readLoopState } from "./loop-state.ts";
 import { isLoopRepo } from "./scope.ts";
+import { isEnabled, setEnabled } from "./settings.ts";
 import { resolveStage, type StageInfo } from "./stage.ts";
 import { listTasks, recordTurn } from "./store.ts";
 import { taskKey, type TurnDelta, zeroDelta } from "./types.ts";
@@ -160,6 +161,7 @@ export default function loopMetricsExtension(pi: ExtensionAPI) {
 
   pi.on("turn_start", async (event, ctx) => {
     currentTurn = null;
+    if (!isEnabled()) return;
     try {
       const repo = getRepoContext(ctx.cwd);
       if (!repo || !isLoopRepo(repo.repoRoot)) return;
@@ -242,6 +244,25 @@ export default function loopMetricsExtension(pi: ExtensionAPI) {
     description: "Show per-task AI usage stats for /loop-managed repos",
     handler: async (_args, ctx) => {
       await runDashboard(ctx);
+    },
+  });
+
+  pi.registerCommand("loop-metrics", {
+    description: "Enable, disable, or check status of loop-metrics turn tracking",
+    handler: async (args, ctx) => {
+      const arg = args.trim().toLowerCase();
+      if (arg === "on" || arg === "enable") {
+        setEnabled(true);
+        ctx.ui.notify("loop-metrics tracking enabled.", "info");
+      } else if (arg === "off" || arg === "disable") {
+        setEnabled(false);
+        ctx.ui.notify("loop-metrics tracking disabled.", "info");
+      } else {
+        ctx.ui.notify(
+          `loop-metrics tracking is currently ${isEnabled() ? "enabled" : "disabled"}. Use "/loop-metrics on" or "/loop-metrics off" to change it.`,
+          "info",
+        );
+      }
     },
   });
 }
