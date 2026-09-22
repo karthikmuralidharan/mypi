@@ -47,28 +47,42 @@ cd mypi && ./bootstrap.sh
 
 Flags: `--config` for config only (skip installs), `--force` to skip backups.
 
-Four things it cannot do for you, and it says so on exit: sign in, install and
-configure the `aperture` launcher (model routing — see below), re-trust
+Four things it cannot do for you, and it says so on exit: sign in, install the
+`aperture` launcher for OpenAI models (model routing — see below), re-trust
 directories, and restore memory.
 
 ## Model routing
 
-pi has no standing model provider in this config — no `defaultProvider`, no
-`aperture/*` entries in `enabledModels`. Routing instead comes from
-[`aperture`](https://github.com/tailscale/aperture-cli), a separate launcher
-binary:
+Two separate paths, one gateway (`ai-gateway.tail692491.ts.net`), because the
+gateway serves the two model families through incompatible protocol shapes:
 
-```bash
-go install github.com/tailscale/aperture-cli/cmd/aperture@latest
-aperture   # menu: pick provider, backend, model, then launches `pi -e <tmp>`
-```
+- **Claude/Anthropic** — `defaultProvider: "amazon-bedrock"`, pi's built-in
+  provider, works out of the box with bare `pi`. It's the bundled
+  `@aws-sdk/client-bedrock-runtime`, which honors the standard AWS SDK
+  endpoint-override env var — set in `config/fish/pi-bedrock-gateway.fish` to
+  point it at the gateway's `/bedrock/model/{id}/converse-stream` route instead
+  of real AWS. No custom extension needed; verified with a live round trip.
+- **OpenAI** — the gateway serves these over `/v1/responses`/`/v1/chat/completions`
+  under a provider ID pi doesn't have a built-in equivalent for. Routed
+  through [`aperture`](https://github.com/tailscale/aperture-cli), a separate
+  launcher binary:
 
-It writes a temporary, per-launch extension (registered as
-`aperture-<providerID>`, never the same ID as a built-in provider) and removes
-it on exit, so `~/.pi/agent/` — settings, auth, sessions — is never touched.
-Running bare `pi` has no model access until this is set up; see
-`docs/COHESION.md` for why the old always-on `@aliou/pi-ts-aperture` extension
-was retired in favor of this.
+  ```bash
+  go install github.com/tailscale/aperture-cli/cmd/aperture@latest
+  aperture   # menu: pick Pi, provider, backend, model, then launches `pi -e <tmp>`
+  ```
+
+  It writes a temporary, per-launch extension (registered as
+  `aperture-<providerID>`, never the same ID as a built-in provider) and
+  removes it on exit, so `~/.pi/agent/` — settings, auth, sessions — is never
+  touched. Note: `aperture`'s Pi client only recognizes OpenAI Responses,
+  Anthropic Messages, OpenAI Chat, and Google Vertex — Bedrock-shaped
+  endpoints are excluded on purpose (upstream comment: they "load from a
+  provider definition but fail at request time against Aperture"), which is
+  exactly why Claude needed the native path above instead.
+
+See `docs/COHESION.md` for why the old always-on `@aliou/pi-ts-aperture`
+extension was retired in favor of this two-path split.
 
 ## Capture changes back
 

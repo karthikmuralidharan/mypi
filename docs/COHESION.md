@@ -164,38 +164,53 @@ Not yet done, deliberately:
    into an enforcing `tool_call` hook — prose losing to code, exactly the lesson
    from OMP's `emission-guard.ts:14`.
 
-## Model routing: retired the standing Aperture extension
+## Model routing: retired the standing Aperture extension, split into two paths
 
-Removed `@aliou/pi-ts-aperture` (packages 21 → 20), `config/extensions/aperture.json`,
-`defaultProvider`, `defaultModel`, and every `aperture/*` entry in `enabledModels`.
-Replaced by [`aperture-cli`](https://github.com/tailscale/aperture-cli)
-(`tailscale/aperture-cli#26` added Pi support), a separate launcher binary run
-as `aperture` instead of `pi` directly: it presents a provider/backend/model
-menu, writes a *temporary* per-launch extension registering the chosen route
-under a namespaced provider ID (`aperture-<providerID>`, never colliding with
-a built-in), execs `pi -e <tmpfile> --model ...`, and deletes the extension on
-exit — `~/.pi/agent/` (settings, auth, sessions) is never touched.
+Removed `@aliou/pi-ts-aperture` (packages 21 → 20) and `config/extensions/
+aperture.json`, the only way `pi` reached a model, with no way to switch
+backend/provider without hand-editing that file and restarting.
 
-Why: the standing extension was the only way `pi` reached a model at all, with
-no way to switch backend/provider without hand-editing `config/extensions/
-aperture.json` and restarting. The launcher makes that a per-launch menu
-choice instead, at the cost of a habit change: bare `pi` (not through
-`aperture`) has no model access now. Verified this is an acceptable trade
-before removing anything:
+The gateway (`ai-gateway.tail692491.ts.net`) turned out to serve its two model
+families through genuinely incompatible protocol shapes, so replacing it took
+two different mechanisms rather than one:
 
-- **Subagent delegation is unaffected.** `pi-subagents` runs children
-  in-process (grepped its source for a `pi` binary spawn — none), so a session
-  launched via `aperture` has its injected provider inherited by every
-  in-process subagent automatically. Nothing shells out to a second `pi`
-  process that would need its own routing.
-- **The native `amazon-bedrock` fallback does not work as a substitute.**
-  Tested directly (`pi --print --no-session --model amazon-bedrock/...`):
-  `UnrecognizedClientException: The security token included in the request is
-  invalid.` It talks to real AWS Bedrock, not the tailnet gateway, and this
-  machine's SSO profile is not the one it picks up. The `amazon-bedrock/*`
-  `enabledModels` entries were themselves served by the aperture extension's
-  own (disabled) `proxy.upstreamProviders`, not by this native path — removed
-  along with the rest of `aperture/*` for the same reason.
+- **Claude/Anthropic — native, no extension.** `defaultProvider` is
+  `amazon-bedrock` again. pi's built-in provider is the bundled
+  `@aws-sdk/client-bedrock-runtime`, which honors the standard AWS SDK
+  endpoint-override env var (not pi-specific) — `AWS_ENDPOINT_URL_BEDROCK_RUNTIME`,
+  set in `config/fish/pi-bedrock-gateway.fish` to the gateway's `/bedrock`
+  path. **Correction to an earlier claim in this section:** it was first
+  recorded here as "does not work as a substitute," tested only *without* the
+  endpoint override, which does hit real AWS with the wrong credentials and
+  fails exactly as originally reported (`UnrecognizedClientException`). With
+  the override set, the same command returns a real response — verified live,
+  including a second confirmation from a real `fish` shell with no manual
+  exports, so it's not an artifact of a hand-set env var in one test shell.
+  No skip-auth flag needed, unlike Claude Code's equivalent
+  `CLAUDE_CODE_SKIP_BEDROCK_AUTH` — whatever credentials the AWS SDK's default
+  chain finds locally are sufficient to sign a request the gateway accepts.
+- **OpenAI — [`aperture-cli`](https://github.com/tailscale/aperture-cli)
+  launcher.** (`tailscale/aperture-cli#26` added Pi support.) The gateway
+  serves OpenAI models over `/v1/responses`/`/v1/chat/completions`, which pi
+  has no built-in provider for. `aperture` is a separate binary, run instead
+  of `pi` directly: it presents a provider/backend/model menu, writes a
+  *temporary* per-launch extension registering the chosen route under a
+  namespaced provider ID (`aperture-<providerID>`, never colliding with a
+  built-in), execs `pi -e <tmpfile> --model ...`, and deletes the extension on
+  exit — `~/.pi/agent/` (settings, auth, sessions) is never touched. Its Pi
+  client only recognizes OpenAI Responses, Anthropic Messages, OpenAI Chat,
+  and Google Vertex — Bedrock is excluded on purpose ("loads from a provider
+  definition but fails at request time against Aperture"), which is exactly
+  why Claude needed the native path above instead of also going through here.
+
+Verified before finalizing either path:
+
+- **Subagent delegation is unaffected either way.** `pi-subagents` runs
+  children in-process (grepped its source for a `pi` binary spawn — none), so
+  whichever provider the top-level session resolves (native bedrock, or one
+  injected by `aperture`) is inherited by every in-process subagent
+  automatically. Nothing shells out to a second `pi` process that would need
+  its own routing.
 
 `aperture` is `go install`ed to `~/go/bin` (not Homebrew — no formula exists),
 so `config/fish/go-bin-path.fish` puts that directory on `PATH`.

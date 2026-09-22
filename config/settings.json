@@ -1,5 +1,7 @@
 {
   "lastChangelogVersion": "0.84.3",
+  "defaultProvider": "amazon-bedrock",
+  "defaultModel": "us.anthropic.claude-sonnet-5",
   "packages": [
     "npm:pi-rtk-optimizer",
     "npm:@plannotator/pi-extension",
