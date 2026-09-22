@@ -81,7 +81,7 @@ gateway serves the two model families through incompatible protocol shapes:
   provider definition but fail at request time against Aperture"), which is
   exactly why Claude needed the native path above instead.
 
-See `docs/COHESION.md` for why the old always-on `@aliou/pi-ts-aperture`
+See `docs/CHANGELOG.md` for why the old always-on `@aliou/pi-ts-aperture`
 extension was retired in favor of this two-path split.
 
 ## Capture changes back

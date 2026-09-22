@@ -12,7 +12,7 @@ Install with:
   pi install npm:pi-ask-user
 <!-- END COMPOUND PI TOOL MAP -->
 
-<!-- BEGIN MYPI REFEREE — hand-authored, see mypi/docs/COHESION.md -->
+<!-- BEGIN MYPI REFEREE — hand-authored, see mypi/docs/CHANGELOG.md -->
 ## Tool routing
 
 This setup has ~26 extensions that each recommend their own tool. Several
