@@ -57,8 +57,8 @@ if command -v fish >/dev/null 2>&1; then
     install_file "$REPO/config/fish/pi-fff-mode.fish" "$FISH_CONFD/pi-fff-mode.fish"
   [[ -f "$REPO/config/fish/go-bin-path.fish" ]] &&
     install_file "$REPO/config/fish/go-bin-path.fish" "$FISH_CONFD/go-bin-path.fish"
-  [[ -f "$REPO/config/fish/pi-bedrock-gateway.fish" ]] &&
-    install_file "$REPO/config/fish/pi-bedrock-gateway.fish" "$FISH_CONFD/pi-bedrock-gateway.fish"
+  [[ -f "$REPO/config/fish/aperture-gateway.fish" ]] &&
+    install_file "$REPO/config/fish/aperture-gateway.fish" "$FISH_CONFD/aperture-gateway.fish"
 else
   echo "    skip fish conf.d files (fish not installed)"
 fi
@@ -188,9 +188,10 @@ Restore complete. Manual steps that cannot be automated:
   1. Auth       — run `pi` and sign in for any non-Aperture provider (e.g.
                   ChatGPT Plus/Pro OAuth for Codex models); credentials live
                   in ~/.pi/agent/auth.json (never versioned).
-  2. Tailnet    — bare `pi` reaches Claude via amazon-bedrock, routed to the
-                  gateway by config/fish/pi-bedrock-gateway.fish. Needs the
-                  tailnet joined (or bridge mode) to actually resolve.
+  2. Tailnet    — bare `pi` reaches Claude via amazon-bedrock, and
+                  `web_research` reaches the gateway directly, both routed by
+                  config/fish/aperture-gateway.fish. Needs the tailnet joined
+                  (or bridge mode) to actually resolve.
   3. Aperture   — OpenAI models need the separate launcher (see
                   README.md's "Model routing" for why):
                     go install github.com/tailscale/aperture-cli/cmd/aperture@latest

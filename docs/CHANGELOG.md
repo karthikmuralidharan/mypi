@@ -119,7 +119,7 @@ So replacing the one old extension took two different fixes, not one:
   built in already; it just needed to be pointed at the internal gateway
   instead of the real Anthropic/AWS service. That's one environment variable
   (`AWS_ENDPOINT_URL_BEDROCK_RUNTIME`), set automatically by
-  `config/fish/pi-bedrock-gateway.fish`. Confirmed working with real
+  `config/fish/aperture-gateway.fish`. Confirmed working with real
   requests, more than once, including from a brand-new terminal with nothing
   manually configured.
 
@@ -146,6 +146,24 @@ sub-task pi delegates to a helper agent automatically uses that same model
 access — confirmed by checking that delegation runs inside the same running
 program rather than starting a whole new `pi` process that would need its
 own setup.
+
+### The web-search tool broke silently, from the same removal
+
+`web_research` (the tool that answers a question by searching the live web)
+had its own copy of "where's the gateway" logic: read its own optional config
+file first, and if that didn't set anything, fall back to reading the old
+Aperture extension's config file. Once that extension and its config file
+were gone, the fallback had nothing left to read, and the tool started
+failing outright — this went unnoticed until it was actually used again.
+
+Rather than patch that one broken fallback, the read-the-other-extension's-
+config approach was retired for a shared environment variable instead —
+the same one below now sets. `config/fish/aperture-gateway.fish` is now the
+one place the gateway's hostname lives at all: it exports
+`$APERTURE_GATEWAY_HOST`, and both pi's built-in Claude access and
+`web_research` read from that instead of each keeping an independent copy
+that could drift the next time the gateway moves. (This file used to be
+named `pi-bedrock-gateway.fish`, back when it only had one reader.)
 
 ## Open questions, not yet resolved
 

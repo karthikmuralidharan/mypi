@@ -16,7 +16,10 @@
  *
  * Config, all optional, from ~/.pi/agent/extensions/websearch.json:
  *   { "baseUrl": "...", "model": "...", "timeoutMs": 120000 }
- * baseUrl defaults to the aperture extension's own configured gateway.
+ * baseUrl defaults to $APERTURE_GATEWAY_HOST (see config/fish/aperture-gateway.fish
+ * in mypi) -- the same canonical gateway host pi's amazon-bedrock provider derives
+ * its own endpoint override from, so there is one place to change it rather than
+ * a copy per consumer that can drift.
  */
 
 import * as fs from "node:fs";
@@ -50,12 +53,13 @@ export function loadResearchConfig(
 	agentDir: string = AGENT_DIR,
 ): ResearchConfig {
 	const own = readJson(path.join(agentDir, "extensions", "websearch.json"));
-	// Reuse the gateway the aperture provider already points at, so there is one
-	// place to change the endpoint rather than two that can drift apart.
-	const aperture = readJson(path.join(agentDir, "extensions", "aperture.json"));
+	// Reuse the same gateway host pi's amazon-bedrock provider derives its own
+	// endpoint override from (config/fish/aperture-gateway.fish in mypi), so
+	// there is one place to change it rather than a copy per consumer that can
+	// drift out of sync.
 	const baseUrl =
 		(typeof own.baseUrl === "string" && own.baseUrl) ||
-		(typeof aperture.baseUrl === "string" && aperture.baseUrl) ||
+		(typeof process.env.APERTURE_GATEWAY_HOST === "string" && process.env.APERTURE_GATEWAY_HOST) ||
 		"";
 	return {
 		baseUrl: baseUrl.replace(/\/+$/, ""),
@@ -100,7 +104,7 @@ export default function webResearchExtension(pi: ExtensionAPI) {
 			if (!cfg.baseUrl) {
 				throw new Error(
 					"web_research: no gateway baseUrl. Set baseUrl in ~/.pi/agent/extensions/websearch.json " +
-						"or configure the aperture extension.",
+						"or set $APERTURE_GATEWAY_HOST.",
 				);
 			}
 			const query = String((params as { query?: unknown }).query ?? "").trim();

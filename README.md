@@ -59,9 +59,12 @@ gateway serves the two model families through incompatible protocol shapes:
 - **Claude/Anthropic** — `defaultProvider: "amazon-bedrock"`, pi's built-in
   provider, works out of the box with bare `pi`. It's the bundled
   `@aws-sdk/client-bedrock-runtime`, which honors the standard AWS SDK
-  endpoint-override env var — set in `config/fish/pi-bedrock-gateway.fish` to
+  endpoint-override env var — set in `config/fish/aperture-gateway.fish` to
   point it at the gateway's `/bedrock/model/{id}/converse-stream` route instead
   of real AWS. No custom extension needed; verified with a live round trip.
+  That same file exports `$APERTURE_GATEWAY_HOST`, the one place the gateway
+  hostname itself lives — `extensions/websearch`'s `web_research` reads it too,
+  rather than each consumer hardcoding its own copy.
 - **OpenAI** — the gateway serves these over `/v1/responses`/`/v1/chat/completions`
   under a provider ID pi doesn't have a built-in equivalent for. Routed
   through [`aperture`](https://github.com/tailscale/aperture-cli), a separate
