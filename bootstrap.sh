@@ -135,6 +135,19 @@ jq -r '.packages[]?' "$REPO/config/settings.json" | while read -r p; do
   pi install "$p" || echo "    WARN: failed to install $p — continuing" >&2
 done
 
+echo "==> mnemosyne CLI (runtime dep of @mnemosyne-oss/pi-mnemosyne)"
+# The extension proxies every mnemosyne_* tool call to the `mnemosyne` binary
+# via spawn; without it the tools install fine but error at call time. uv tool
+# install keeps it isolated and puts the binary on PATH at ~/.local/bin.
+if command -v mnemosyne >/dev/null 2>&1; then
+  echo "    mnemosyne already on PATH ($(command -v mnemosyne)) — skipping"
+elif command -v uv >/dev/null 2>&1; then
+  uv tool install mnemosyne-memory ||
+    echo "    WARN: uv tool install failed — install mnemosyne-memory by hand" >&2
+else
+  echo "    WARN: uv not found — install uv, then: uv tool install mnemosyne-memory" >&2
+fi
+
 echo "==> third-party skills (~/.agents/skills)"
 LOCK="$REPO/manifests/agents-skill-lock.json"
 if [[ -f "$LOCK" ]]; then
@@ -173,9 +186,9 @@ Restore complete. Manual steps that cannot be automated:
                   joined (or bridge mode) for it to resolve.
   3. Trust      — pi re-prompts per directory on first use;
                   ~/.pi/agent/trust.json is machine-specific.
-  4. Memory     — intentionally NOT restored. See docs/BOUNDARY.md. On a fresh
-                  machine, `uv tool install mnemosyne-memory` puts the
-                  `mnemosyne` CLI on PATH for @mnemosyne-oss/pi-mnemosyne.
+  4. Memory     — data intentionally NOT restored (docs/BOUNDARY.md). The
+                  mnemosyne CLI itself was installed above when uv was present;
+                  if it warned, run: uv tool install mnemosyne-memory
   5. Natives    — if a tool errors with NODE_MODULE_VERSION,
                   see skills/rebuild-pi-native-modules/.
 

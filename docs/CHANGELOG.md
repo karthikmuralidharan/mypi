@@ -47,6 +47,11 @@ Referee rows in `config/AGENTS.md` now route recall to `mnemosyne_recall`
 live dir, `sync.sh`, and `bootstrap.sh` (including the childExtensionPaths
 re-rooting block).
 
+`bootstrap.sh` installs the CLI itself (`uv tool install mnemosyne-memory`,
+skipped when `mnemosyne` is already on PATH, warned-and-continued when uv is
+absent) right after the `pi install` loop — the extension's tools spawn the
+binary, so a restore without it would load cleanly and fail at call time.
+
 ## Aperture routing moved into pi's own models.json
 
 The Aperture gateway used to need three separate pieces of plumbing:
