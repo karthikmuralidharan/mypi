@@ -8,6 +8,45 @@ here; this is for decisions, not every edit.
 The routing rules these entries produced live in `config/AGENTS.md`, inside
 the `<!-- BEGIN MYPI REFEREE -->` block.
 
+## Memory moved from pi-hermes-memory to mnemosyne
+
+pi-hermes-memory was doing two jobs with very different weights: it kept a
+small set of hand-curated markdown memory files (global, user profile,
+failure lessons, per-project), and it archived every session transcript into
+a 1.7 GB `sessions.db` with its own LLM-driven review pipeline
+(`llmModelOverride`, child extensions, a config file that had to re-root
+absolute paths on every machine). The curated memory is the valuable part;
+the review machinery was the fragile part — better-sqlite3 ABI breaks after
+Node updates, a config file outside pi's own settings, and an extra model
+routing path to keep pointed at the gateway.
+
+mnemosyne (mnemosyne-oss/pi-mnemosyne) covers the valuable part with none of
+the machinery: local-first SQLite, zero config, a pure CLI (`mnemosyne
+store/recall/delete/stats/sleep`) that the pi extension proxies as
+`mnemosyne_remember` / `mnemosyne_recall` / `mnemosyne_forget` /
+`mnemosyne_stats` / `mnemosyne_sleep`. The CLI installs with
+`uv tool install mnemosyne-memory`; the DB lives at
+`~/.hermes/mnemosyne/data/mnemosyne.db`.
+
+Migration: all 145 curated entries moved over with a one-off script that
+split the hermes markdown files on their `§` separators, stripped the
+`<!-- created=…, last=… -->` metadata comments (mnemosyne tracks its own
+timestamps), and called `mnemosyne store` per entry. Provenance is preserved
+in the source tag: `hermes:global`, `hermes:user`, `hermes:failures`,
+`hermes:project:<name>`. Verified by recall probes (LSP routing policy and
+the JIRA Team-field convention both surface as top hits). `sessions.db` was
+deliberately not migrated — it is a raw transcript archive, not curated
+memory, and mnemosyne has no equivalent surface; the hermes directories stay
+on disk as an archive, untouched. Hermes's learned-skills directories
+(`pi-hermes-memory/skills`, `projects-memory/*/skills`) are likewise
+archived; mnemosyne has no skill concept.
+
+Referee rows in `config/AGENTS.md` now route recall to `mnemosyne_recall`
+(there is no `session_search` replacement) and durable writes to
+`mnemosyne_remember`. `hermes-memory-config.json` is gone from the repo, the
+live dir, `sync.sh`, and `bootstrap.sh` (including the childExtensionPaths
+re-rooting block).
+
 ## Aperture routing moved into pi's own models.json
 
 The Aperture gateway used to need three separate pieces of plumbing:

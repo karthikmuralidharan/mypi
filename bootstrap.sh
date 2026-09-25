@@ -47,7 +47,7 @@ install_file() {
 }
 
 echo "==> config -> $A"
-for f in settings.json models.json mcp.json AGENTS.md hermes-memory-config.json; do
+for f in settings.json models.json mcp.json AGENTS.md; do
   install_file "$REPO/config/$f" "$A/$f"
 done
 
@@ -61,24 +61,6 @@ else
   echo "    skip fish conf.d files (fish not installed)"
 fi
 
-# hermes does no tilde expansion, so childExtensionPaths must be absolute. Re-root
-# any committed path onto THIS machine's agent dir, otherwise a restore under a
-# different username silently points at a nonexistent provider extension and the
-# memory auto-review fails with "No API provider registered".
-if [[ -f "$A/hermes-memory-config.json" ]] && command -v jq >/dev/null 2>&1; then
-  tmp="$(mktemp)"
-  if jq --arg base "$A" '
-        if .childExtensionPaths then
-          .childExtensionPaths |= map(sub(".*/\\.pi/agent/"; $base + "/"))
-        else . end
-      ' "$A/hermes-memory-config.json" >"$tmp" 2>/dev/null; then
-    mv "$tmp" "$A/hermes-memory-config.json"
-    echo "    re-rooted childExtensionPaths onto $A"
-  else
-    rm -f "$tmp"
-    echo "    WARN: could not re-root childExtensionPaths; check it by hand" >&2
-  fi
-fi
 install_file "$REPO/config/npm/package.json" "$A/npm/package.json"
 install_file "$REPO/config/npm/package-lock.json" "$A/npm/package-lock.json"
 
@@ -191,8 +173,10 @@ Restore complete. Manual steps that cannot be automated:
                   joined (or bridge mode) for it to resolve.
   3. Trust      — pi re-prompts per directory on first use;
                   ~/.pi/agent/trust.json is machine-specific.
-  4. Memory     — intentionally NOT restored. See docs/BOUNDARY.md.
-  5. Natives    — if memory_search errors with NODE_MODULE_VERSION,
+  4. Memory     — intentionally NOT restored. See docs/BOUNDARY.md. On a fresh
+                  machine, `uv tool install mnemosyne-memory` puts the
+                  `mnemosyne` CLI on PATH for @mnemosyne-oss/pi-mnemosyne.
+  5. Natives    — if a tool errors with NODE_MODULE_VERSION,
                   see skills/rebuild-pi-native-modules/.
 
 Verify with:  pi --version

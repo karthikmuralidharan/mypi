@@ -22,17 +22,18 @@ decision does not have to be re-derived later.
 
 ### Data — excluded for now, by choice
 
-- `pi-hermes-memory/{MEMORY.md,USER.md,failures.md}` — hand-curated global memory (~18KB).
-- `projects-memory/*/MEMORY.md` — per-project memory, includes work context.
-- `pi-hermes-memory/sessions.db` — 1.6 GB.
+- `~/.hermes/mnemosyne/data/mnemosyne.db` — mnemosyne's memory store (working,
+  episodic, knowledge graph). Everything pi remembers lives here now.
+- `pi-hermes-memory/`, `projects-memory/` — retired hermes-memory store, kept
+  on disk as an archive (1.7 GB incl. sessions.db). Not searched anymore.
 - `sessions/` — 167 MB of transcripts.
 
-This is the one judgement call worth revisiting. The global memory files are
-genuinely irreplaceable and small. They are excluded today because memory is
+This is the one judgement call worth revisiting. The mnemosyne DB is
+genuinely irreplaceable and small. It is excluded today because memory is
 data with a different lifecycle than config: it changes on almost every
-session, it contains work context, and it wants append-only backup rather than
-diff review. If that changes, add a `memory/` directory and drop the
-corresponding `.gitignore` line — nothing else needs to move.
+session, it contains work context, and it wants append-only backup rather
+than diff review. If that changes, export via `mnemosyne export` and track
+the JSON — nothing else needs to move.
 
 ### Regenerable — no value in versioning
 

@@ -7,7 +7,6 @@
     "npm:@plannotator/pi-extension",
     "npm:@juicesharp/rpiv-ask-user-question",
     "npm:@juicesharp/rpiv-todo",
-    "npm:pi-hermes-memory",
     "npm:@upstash/context7-pi",
     "npm:pi-lens",
     "git:github.com/pasky/chrome-cdp-skill@v1.0.2",
@@ -22,7 +21,8 @@
     "npm:pi-mcp-adapter",
     "npm:@ff-labs/pi-fff",
     "npm:context-mode",
-    "npm:pi-subagents"
+    "npm:pi-subagents",
+    "npm:@mnemosyne-oss/pi-mnemosyne"
   ],
   "enableInstallTelemetry": false,
   "defaultThinkingLevel": "medium",

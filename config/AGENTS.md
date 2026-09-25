@@ -33,7 +33,8 @@ first actually failed.
 | Read a known region | `read` with offset/limit | `cat`, `head`, `sed -n` |
 | Match a code pattern structurally | `ast_grep_search` | regex over source |
 | Errors, types, lint | `lens_diagnostics` (see cadence below) | running a build to discover type errors |
-| Recall earlier work or decisions | `memory_search`, then `session_search` | re-deriving from scratch |
+| Recall earlier work or decisions | `mnemosyne_recall` | re-deriving from scratch |
+| Record a durable fact, preference, or failure lesson | `mnemosyne_remember` | leaving it in chat where the next session cannot find it |
 | Library or API documentation | `query-docs` (context7) | `web_research` for API details |
 | A question needing the live web | `web_research` | guessing from training data |
 | A specific URL you already have | `ctx_fetch_and_index`, then `ctx_search` | dumping a raw page into context |
@@ -104,7 +105,7 @@ re-litigated every session:
   is genuinely structural.
 - `read` vs `module_report`/`read_symbol` — outline first for unfamiliar files,
   direct `read` when the target region is already known.
-- `memory_search` vs `ctx_search` — `memory_search` for durable cross-session
+- `mnemosyne_recall` vs `ctx_search` — `mnemosyne_recall` for durable cross-session
   memory; `ctx_search` only for content indexed earlier in this session.
 - `web_research` vs `ctx_fetch_and_index` — two tools, two jobs, no overlap.
   `web_research` (OpenAI's built-in web_search via the aperture gateway) is for a

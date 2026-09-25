@@ -82,10 +82,11 @@ git commit -am "add pi-lens, bump default model"
 
 ## What is deliberately absent
 
-- **Memory.** `MEMORY.md`, `USER.md`, `failures.md`, and per-project memory are
-  irreplaceable but are data, not config — different lifecycle, changes every
-  session, contains work context. Excluded for now; `docs/BOUNDARY.md` records
-  how to add it later if that call changes.
+- **Memory.** Durable cross-session memory lives in mnemosyne's SQLite store
+  (`~/.hermes/mnemosyne/data/mnemosyne.db`) — irreplaceable but data, not
+  config: different lifecycle, changes every session, contains work context.
+  Excluded for now; `docs/BOUNDARY.md` records how to add it later if that
+  call changes.
 - **Plugin content.** 36 `ce-*` skills and 67 agents are regenerated from
   `settings.json` `packages[]` rather than vendored, to keep diffs clean.
 - **Secrets.** `auth.json` is gitignored and was never copied in. Verified with

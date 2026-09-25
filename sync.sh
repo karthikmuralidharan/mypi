@@ -16,7 +16,7 @@ FISH_CONFD="$HOME/.config/fish/conf.d"
 }
 
 echo "==> config"
-for f in settings.json models.json mcp.json AGENTS.md hermes-memory-config.json; do
+for f in settings.json models.json mcp.json AGENTS.md; do
   if [[ -f "$A/$f" ]]; then
     cp "$A/$f" "$REPO/config/$f"
     echo "    config/$f"
