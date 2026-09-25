@@ -9,33 +9,34 @@
  * Different job, so a different name — the referee forbids two tools competing
  * for one slot.
  *
- * AUTH: none. It routes through the aperture gateway already configured for this
- * machine (reachable on the tailnet, no key, no OAuth). Verified in testing:
- * /v1/responses accepts {"type":"web_search"} and returns url_citation
- * annotations.
+ * ROUTING: the tool runs against a model from pi's own model registry
+ * (models.json), resolved through ctx.modelRegistry — endpoint and
+ * credentials come from the provider that owns the model, so there is no
+ * separate baseUrl to keep in sync. Verified in testing: the aperture
+ * gateway's Responses API accepts {"type":"web_search"} and returns
+ * url_citation annotations.
  *
  * Config, all optional, from ~/.pi/agent/extensions/websearch.json:
- *   { "baseUrl": "...", "model": "...", "timeoutMs": 120000 }
- * baseUrl defaults to $APERTURE_GATEWAY_HOST (see config/fish/aperture-gateway.fish
- * in mypi) -- the same canonical gateway host pi's amazon-bedrock provider derives
- * its own endpoint override from, so there is one place to change it rather than
- * a copy per consumer that can drift.
+ *   { "model": "provider/model-id", "timeoutMs": 120000 }
+ * "model" is a registry reference (see pi --list-models) and must name a
+ * model whose provider speaks the Responses API.
  */
 
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { Api, Model } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import { type RawResponse, renderResearch, shapeResearch } from "./shape";
 import { assertHttpUrl, bodyToText, capFetchText, FETCH_CAPS } from "./fetch";
 
 const AGENT_DIR = path.join(os.homedir(), ".pi", "agent");
-const DEFAULT_MODEL = "openai.gpt-5.6-luna";
+const DEFAULT_MODEL_REF = "aperture-responses/gpt-5.6-luna";
 const DEFAULT_TIMEOUT_MS = 120_000;
 
-interface ResearchConfig {
-	baseUrl: string;
+export interface ResearchConfig {
+	/** "provider/model-id" reference into pi's model registry. */
 	model: string;
 	timeoutMs: number;
 }
@@ -53,22 +54,88 @@ export function loadResearchConfig(
 	agentDir: string = AGENT_DIR,
 ): ResearchConfig {
 	const own = readJson(path.join(agentDir, "extensions", "websearch.json"));
-	// Reuse the same gateway host pi's amazon-bedrock provider derives its own
-	// endpoint override from (config/fish/aperture-gateway.fish in mypi), so
-	// there is one place to change it rather than a copy per consumer that can
-	// drift out of sync.
-	const baseUrl =
-		(typeof own.baseUrl === "string" && own.baseUrl) ||
-		(typeof process.env.APERTURE_GATEWAY_HOST === "string" && process.env.APERTURE_GATEWAY_HOST) ||
-		"";
 	return {
-		baseUrl: baseUrl.replace(/\/+$/, ""),
-		model: typeof own.model === "string" && own.model ? own.model : DEFAULT_MODEL,
+		model:
+			typeof own.model === "string" && own.model.trim()
+				? own.model.trim()
+				: DEFAULT_MODEL_REF,
 		timeoutMs:
 			typeof own.timeoutMs === "number" && own.timeoutMs > 0
 				? own.timeoutMs
 				: DEFAULT_TIMEOUT_MS,
 	};
+}
+
+/** Split a "provider/model-id" reference; undefined when malformed. */
+export function parseModelRef(
+	ref: string,
+): { provider: string; id: string } | undefined {
+	const slash = ref.indexOf("/");
+	if (slash <= 0 || slash === ref.length - 1) return undefined;
+	return { provider: ref.slice(0, slash), id: ref.slice(slash + 1) };
+}
+
+/** Mirrors the (non-exported) result of ModelRegistry.getApiKeyAndHeaders. */
+export type ResearchAuth =
+	| { ok: true; apiKey?: string; headers?: Record<string, string | null>; baseUrl?: string }
+	| { ok: false; error: string };
+
+/** The slice of pi's model registry the tool needs — structural, so tests can fake it. */
+export interface ResearchRegistry {
+	find(provider: string, id: string): Model<Api> | undefined;
+	getApiKeyAndHeaders(model: Model<Api>): Promise<ResearchAuth>;
+}
+
+export interface ResearchTarget {
+	endpoint: URL;
+	headers: Record<string, string>;
+	modelId: string;
+}
+
+/**
+ * Resolve the configured model reference through pi's registry: the endpoint
+ * and credentials come from the provider that owns the model, so the tool
+ * tracks models.json instead of keeping its own baseUrl copy.
+ */
+export async function resolveResearchTarget(
+	registry: ResearchRegistry,
+	ref: string,
+): Promise<ResearchTarget> {
+	const parsed = parseModelRef(ref);
+	const model = parsed && registry.find(parsed.provider, parsed.id);
+	if (!model) {
+		throw new Error(
+			`web_research: "${ref}" is not a provider/model reference in pi's registry ` +
+				`(see pi --list-models). Set "model" in ~/.pi/agent/extensions/websearch.json.`,
+		);
+	}
+	if (model.api !== "openai-responses") {
+		throw new Error(
+			`web_research: ${ref} uses the "${model.api}" API; the built-in web_search ` +
+				`tool requires a model whose provider speaks "openai-responses".`,
+		);
+	}
+	const auth = await registry.getApiKeyAndHeaders(model);
+	if (!auth.ok) {
+		throw new Error(
+			`web_research: cannot resolve credentials for ${ref}: ${auth.error}`,
+		);
+	}
+	const base = assertHttpUrl(auth.baseUrl ?? model.baseUrl, `baseUrl of ${ref}`)
+		.href.replace(/\/+$/, "");
+	const headers: Record<string, string> = { "content-type": "application/json" };
+	// A null header value unsets a default; fetch only takes strings.
+	for (const [name, value] of Object.entries(auth.headers ?? {})) {
+		if (value == null) delete headers[name];
+		else headers[name] = value;
+	}
+	if (
+		auth.apiKey &&
+		!Object.keys(headers).some((k) => k.toLowerCase() === "authorization")
+	) {
+		headers.authorization = `Bearer ${auth.apiKey}`;
+	}
+	return { endpoint: new URL(`${base}/responses`), headers, modelId: model.id };
 }
 
 export default function webResearchExtension(pi: ExtensionAPI) {
@@ -99,23 +166,11 @@ export default function webResearchExtension(pi: ExtensionAPI) {
 					"(version, date range, 'cite the official docs').",
 			}),
 		}),
-		async execute(_toolCallId, params, signal) {
+		async execute(_toolCallId, params, signal, _onUpdate, ctx) {
 			const cfg = loadResearchConfig();
-			if (!cfg.baseUrl) {
-				throw new Error(
-					"web_research: no gateway baseUrl. Set baseUrl in ~/.pi/agent/extensions/websearch.json " +
-						"or set $APERTURE_GATEWAY_HOST.",
-				);
-			}
-			const query = String((params as { query?: unknown }).query ?? "").trim();
+			const target = await resolveResearchTarget(ctx.modelRegistry, cfg.model);
+			const query = String(params.query ?? "").trim();
 			if (!query) throw new Error("web_research: 'query' is required.");
-
-			// Build the endpoint via the URL constructor rather than string
-			// interpolation, and validate the configured host first.
-			const endpoint = new URL(
-				"/v1/responses",
-				assertHttpUrl(cfg.baseUrl, "baseUrl"),
-			);
 
 			// Own timeout, but still honour the caller's cancellation.
 			const ac = new AbortController();
@@ -124,11 +179,11 @@ export default function webResearchExtension(pi: ExtensionAPI) {
 			signal?.addEventListener("abort", onAbort, { once: true });
 
 			try {
-				const res = await fetch(endpoint, {
+				const res = await fetch(target.endpoint, {
 					method: "POST",
-					headers: { "content-type": "application/json" },
+					headers: target.headers,
 					body: JSON.stringify({
-						model: cfg.model,
+						model: target.modelId,
 						input: query,
 						tools: [{ type: "web_search" }],
 					}),

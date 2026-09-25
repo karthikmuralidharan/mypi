@@ -1,0 +1,141 @@
+{
+  "providers": {
+    "aperture-bedrock": {
+      "baseUrl": "http://ai.tail427a30.ts.net/bedrock",
+      "api": "bedrock-converse-stream",
+      "apiKey": "not-required",
+      "models": [
+        {
+          "id": "us.anthropic.claude-opus-5",
+          "reasoning": true,
+          "input": ["text", "image"],
+          "contextWindow": 1000000,
+          "maxTokens": 128000
+        },
+        {
+          "id": "us.anthropic.claude-opus-4-8",
+          "reasoning": true,
+          "input": ["text", "image"],
+          "contextWindow": 1000000,
+          "maxTokens": 128000
+        },
+        {
+          "id": "us.anthropic.claude-sonnet-5",
+          "reasoning": true,
+          "input": ["text", "image"],
+          "contextWindow": 1000000,
+          "maxTokens": 128000
+        },
+        {
+          "id": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+          "reasoning": true,
+          "input": ["text", "image"],
+          "contextWindow": 200000,
+          "maxTokens": 64000
+        }
+      ]
+    },
+    "aperture-completions": {
+      "baseUrl": "http://ai.tail427a30.ts.net/v1",
+      "api": "openai-completions",
+      "apiKey": "not-required",
+      "models": [
+        {
+          "id": "gpt-5.4"
+        },
+        {
+          "id": "gpt-5.5"
+        },
+        {
+          "id": "gpt-5.6-luna"
+        },
+        {
+          "id": "gpt-5.6-terra"
+        },
+        {
+          "id": "gpt-5.6-sol"
+        },
+        {
+          "id": "gpt-6-astra"
+        },
+        {
+          "id": "gpt-6-sol"
+        },
+        {
+          "id": "gpt-6-luna"
+        },
+        {
+          "id": "us.moonshotai.kimi-k3"
+        }
+      ]
+    },
+    "aperture-responses": {
+      "baseUrl": "http://ai.tail427a30.ts.net/v1",
+      "api": "openai-responses",
+      "apiKey": "not-required",
+      "models": [
+        {
+          "id": "gpt-5.4"
+        },
+        {
+          "id": "gpt-5.5"
+        },
+        {
+          "id": "gpt-5.6-luna"
+        },
+        {
+          "id": "gpt-5.6-terra"
+        },
+        {
+          "id": "gpt-5.6-sol"
+        },
+        {
+          "id": "gpt-6-astra"
+        },
+        {
+          "id": "gpt-6-sol"
+        },
+        {
+          "id": "gpt-6-luna"
+        }
+      ]
+    },
+    "mtplx": {
+      "baseUrl": "http://127.0.0.1:8000/v1",
+      "api": "openai-completions",
+      "apiKey": "mtplx-local",
+      "authHeader": true,
+      "headers": {
+        "x-mtplx-client": "pi"
+      },
+      "compat": {
+        "supportsDeveloperRole": false,
+        "supportsReasoningEffort": true,
+        "thinkingFormat": "qwen",
+        "maxTokensField": "max_tokens"
+      },
+      "models": [
+        {
+          "id": "mtplx-qwen38-27b-optimized-speed",
+          "name": "MTPLX mtplx-qwen38-27b-optimized-speed",
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "minimal": null,
+            "xhigh": "xhigh"
+          },
+          "input": [
+            "text"
+          ],
+          "contextWindow": 262144,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "maxTokens": 262144
+        }
+      ]
+    }
+  }
+}

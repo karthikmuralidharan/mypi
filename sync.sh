@@ -16,7 +16,7 @@ FISH_CONFD="$HOME/.config/fish/conf.d"
 }
 
 echo "==> config"
-for f in settings.json mcp.json AGENTS.md hermes-memory-config.json; do
+for f in settings.json models.json mcp.json AGENTS.md hermes-memory-config.json; do
   if [[ -f "$A/$f" ]]; then
     cp "$A/$f" "$REPO/config/$f"
     echo "    config/$f"
@@ -41,9 +41,6 @@ echo "    config/npm/package.json + package-lock.json"
 
 echo "==> extension config"
 mkdir -p "$REPO/config/extensions/pi-rtk-optimizer"
-[[ -f "$A/extensions/aperture.json" ]] &&
-  cp "$A/extensions/aperture.json" "$REPO/config/extensions/aperture.json" &&
-  echo "    config/extensions/aperture.json"
 [[ -f "$A/extensions/pi-rtk-optimizer/config.json" ]] &&
   cp "$A/extensions/pi-rtk-optimizer/config.json" "$REPO/config/extensions/pi-rtk-optimizer/config.json" &&
   echo "    config/extensions/pi-rtk-optimizer/config.json"

@@ -11,8 +11,8 @@ exactly where that line sits and why.
 
 ```text
 config/                     declarative pi setup
-  settings.json               thinking level, packages[] (no standing model
-                               provider — see "Model routing" below)
+  settings.json               thinking level, packages[], default model
+  models.json                 Aperture gateway providers — see "Model routing"
   mcp.json                    MCP server registrations
   AGENTS.md                   global agent instructions
   npm/package{,-lock}.json    exact pins for all 26 pi extensions
@@ -47,45 +47,27 @@ cd mypi && ./bootstrap.sh
 
 Flags: `--config` for config only (skip installs), `--force` to skip backups.
 
-Four things it cannot do for you, and it says so on exit: sign in, install the
-`aperture` launcher for OpenAI models (model routing — see below), re-trust
+Three things it cannot do for you, and it says so on exit: sign in, re-trust
 directories, and restore memory.
 
 ## Model routing
 
-Two separate paths, one gateway (`ai-gateway.tail692491.ts.net`), because the
-gateway serves the two model families through incompatible protocol shapes:
+All models route through the Aperture gateway, declared in
+`config/models.json` — pi's native custom-provider file, no extension or
+launcher involved. Three providers cover the gateway's protocol shapes:
+`aperture-bedrock` (Claude, Bedrock Converse — the gateway serves Claude
+only through its bedrock endpoints, not Anthropic Messages),
+`aperture-responses` (OpenAI, Responses API), and `aperture-completions`
+(OpenAI, chat completions). The gateway sits on the tailnet and needs no
+credential, so `apiKey` is a placeholder and `AWS_BEDROCK_SKIP_AUTH=1`
+(set in `config/fish/config.fish`) lets the bedrock client skip request
+signing. `web_research` (`extensions/websearch`) resolves a model from the
+same file through pi's model registry, so the gateway host lives in
+exactly one place.
 
-- **Claude/Anthropic** — `defaultProvider: "amazon-bedrock"`, pi's built-in
-  provider, works out of the box with bare `pi`. It's the bundled
-  `@aws-sdk/client-bedrock-runtime`, which honors the standard AWS SDK
-  endpoint-override env var — set in `config/fish/aperture-gateway.fish` to
-  point it at the gateway's `/bedrock/model/{id}/converse-stream` route instead
-  of real AWS. No custom extension needed; verified with a live round trip.
-  That same file exports `$APERTURE_GATEWAY_HOST`, the one place the gateway
-  hostname itself lives — `extensions/websearch`'s `web_research` reads it too,
-  rather than each consumer hardcoding its own copy.
-- **OpenAI** — the gateway serves these over `/v1/responses`/`/v1/chat/completions`
-  under a provider ID pi doesn't have a built-in equivalent for. Routed
-  through [`aperture`](https://github.com/tailscale/aperture-cli), a separate
-  launcher binary:
-
-  ```bash
-  go install github.com/tailscale/aperture-cli/cmd/aperture@latest
-  aperture   # menu: pick Pi, provider, backend, model, then launches `pi -e <tmp>`
-  ```
-
-  It writes a temporary, per-launch extension (registered as
-  `aperture-<providerID>`, never the same ID as a built-in provider) and
-  removes it on exit, so `~/.pi/agent/` — settings, auth, sessions — is never
-  touched. Note: `aperture`'s Pi client only recognizes OpenAI Responses,
-  Anthropic Messages, OpenAI Chat, and Google Vertex — Bedrock-shaped
-  endpoints are excluded on purpose (upstream comment: they "load from a
-  provider definition but fail at request time against Aperture"), which is
-  exactly why Claude needed the native path above instead.
-
-See `docs/CHANGELOG.md` for why the old always-on `@aliou/pi-ts-aperture`
-extension was retired in favor of this two-path split.
+See `docs/CHANGELOG.md` for the retired approaches: the always-on
+`@aliou/pi-ts-aperture` extension, the `aperture` launcher binary, and the
+bedrock endpoint-override env var.
 
 ## Capture changes back
 

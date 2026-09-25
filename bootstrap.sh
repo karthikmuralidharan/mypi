@@ -47,7 +47,7 @@ install_file() {
 }
 
 echo "==> config -> $A"
-for f in settings.json mcp.json AGENTS.md hermes-memory-config.json; do
+for f in settings.json models.json mcp.json AGENTS.md hermes-memory-config.json; do
   install_file "$REPO/config/$f" "$A/$f"
 done
 
@@ -57,8 +57,6 @@ if command -v fish >/dev/null 2>&1; then
     install_file "$REPO/config/fish/pi-fff-mode.fish" "$FISH_CONFD/pi-fff-mode.fish"
   [[ -f "$REPO/config/fish/go-bin-path.fish" ]] &&
     install_file "$REPO/config/fish/go-bin-path.fish" "$FISH_CONFD/go-bin-path.fish"
-  [[ -f "$REPO/config/fish/aperture-gateway.fish" ]] &&
-    install_file "$REPO/config/fish/aperture-gateway.fish" "$FISH_CONFD/aperture-gateway.fish"
 else
   echo "    skip fish conf.d files (fish not installed)"
 fi
@@ -188,22 +186,15 @@ Restore complete. Manual steps that cannot be automated:
   1. Auth       — run `pi` and sign in for any non-Aperture provider (e.g.
                   ChatGPT Plus/Pro OAuth for Codex models); credentials live
                   in ~/.pi/agent/auth.json (never versioned).
-  2. Tailnet    — bare `pi` reaches Claude via amazon-bedrock, and
-                  `web_research` reaches the gateway directly, both routed by
-                  config/fish/aperture-gateway.fish. Needs the tailnet joined
-                  (or bridge mode) to actually resolve.
-  3. Aperture   — OpenAI models need the separate launcher (see
-                  README.md's "Model routing" for why):
-                    go install github.com/tailscale/aperture-cli/cmd/aperture@latest
-                  Run `aperture`, point it at the gateway on first run, then
-                  launch Pi from its menu — it injects routing per-launch and
-                  leaves ~/.pi/agent/ untouched.
-  4. Trust      — pi re-prompts per directory on first use;
+  2. Tailnet    — all model routing comes from ~/.pi/agent/models.json,
+                  which points at the Aperture gateway; the tailnet must be
+                  joined (or bridge mode) for it to resolve.
+  3. Trust      — pi re-prompts per directory on first use;
                   ~/.pi/agent/trust.json is machine-specific.
-  5. Memory     — intentionally NOT restored. See docs/BOUNDARY.md.
-  6. Natives    — if memory_search errors with NODE_MODULE_VERSION,
+  4. Memory     — intentionally NOT restored. See docs/BOUNDARY.md.
+  5. Natives    — if memory_search errors with NODE_MODULE_VERSION,
                   see skills/rebuild-pi-native-modules/.
 
-Verify with:  pi --version && aperture --version
+Verify with:  pi --version
 ────────────────────────────────────────────────────────────────
 EOF

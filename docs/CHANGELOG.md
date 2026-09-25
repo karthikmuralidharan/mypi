@@ -8,6 +8,41 @@ here; this is for decisions, not every edit.
 The routing rules these entries produced live in `config/AGENTS.md`, inside
 the `<!-- BEGIN MYPI REFEREE -->` block.
 
+## Aperture routing moved into pi's own models.json
+
+The Aperture gateway used to need three separate pieces of plumbing:
+`config/fish/aperture-gateway.fish` exported `$APERTURE_GATEWAY_HOST` and
+pointed pi's built-in `amazon-bedrock` provider at the gateway via
+`AWS_ENDPOINT_URL_BEDROCK_RUNTIME`; OpenAI models went through the separate
+`aperture` launcher binary, which injected a temporary per-launch extension;
+and `web_research` read the env var as its fallback endpoint. Three
+mechanisms for one gateway, two of them outside pi's own config.
+
+The gateway now publishes a ready-made `models.json` — pi's native
+custom-provider file. That one file replaces all of the plumbing: the fish
+file, the launcher, the retired `@aliou/pi-ts-aperture` dependency, and
+the `aperture.json` sync path are gone. `web_research` no longer keeps any
+endpoint of its own: its config is a `provider/model-id` reference
+(default `aperture-responses/gpt-5.6-luna`) that it resolves through pi's
+model registry — endpoint and credentials come from the provider that owns
+the model — so the gateway host still lives in exactly one place.
+
+The published config did not match what this gateway actually routes, so
+the Claude side deviates from it. Probing `GET /v1/models` and each
+protocol endpoint showed: Claude models exist only with `us.anthropic.*`
+IDs and are served only through bedrock endpoints
+(`/bedrock/model/{model}/converse-stream`) — `/v1/messages` 404s for every
+Claude ID, prefixed or not. So Claude goes through an `aperture-bedrock`
+provider with `api: "bedrock-converse-stream"` (pi honors the provider
+`baseUrl` as the client endpoint, and `AWS_BEDROCK_SKIP_AUTH=1` from
+`config/fish/config.fish` skips signing), not the published
+anthropic-messages provider. The published `openai.*`/`us.openai.*` GPT
+aliases also 404; only the bare catalog IDs (`gpt-5.5`, `gpt-5.6-luna`,
+…) route, so those are the IDs in the file. `defaultProvider` is
+`aperture-bedrock`, default model `us.anthropic.claude-sonnet-5`, and the
+hermes-memory `llmModelOverride` points at the same provider now that the
+bedrock endpoint env override is gone.
+
 ## Too many extensions were giving contradictory advice
 
 This setup runs about 20 pi extensions. Each one was written separately, and

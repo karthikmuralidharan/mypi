@@ -7,28 +7,60 @@
  *
  * Run: bun extensions/websearch/smoke.ts
  *
- * It deliberately reuses loadResearchConfig and shapeResearch rather than
- * re-implementing them. The previous version hardcoded the gateway URL and
- * parsed a payload shape the API does not produce (`type: "text"` items and
- * `[source: N]` markers instead of `type: "message"` and url_citation
- * annotations), so both of its checks reported FAIL even when the tool worked.
+ * The extension resolves its model through pi's registry (ctx.modelRegistry);
+ * this script runs outside pi, so it performs the same resolution by hand
+ * against ~/.pi/agent/models.json: same websearch.json model reference, same
+ * provider lookup, then the exact request the tool would send.
  */
 
-import { loadResearchConfig } from "./index";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { loadResearchConfig, parseModelRef } from "./index";
 import { shapeResearch } from "./shape";
 
-const cfg = loadResearchConfig();
+interface SmokeTarget {
+	endpoint: string;
+	headers: Record<string, string>;
+	modelId: string;
+}
 
-async function research(query: string) {
-	const res = await fetch(`${cfg.baseUrl}/v1/responses`, {
+/** Stand-in for ctx.modelRegistry: read the same models.json pi loads. */
+function resolveFromModelsJson(ref: string): SmokeTarget | undefined {
+	const parsed = parseModelRef(ref);
+	if (!parsed) return undefined;
+	const file = path.join(os.homedir(), ".pi", "agent", "models.json");
+	const providers = JSON.parse(fs.readFileSync(file, "utf8")).providers;
+	const provider = providers?.[parsed.provider];
+	if (typeof provider?.baseUrl !== "string") return undefined;
+	const known = provider.models?.some(
+		(m: { id?: unknown }) => m.id === parsed.id,
+	);
+	if (!known) return undefined;
+	const apiKey =
+		typeof provider.apiKey === "string" && !provider.apiKey.startsWith("$")
+			? provider.apiKey
+			: undefined;
+	return {
+		endpoint: `${provider.baseUrl.replace(/\/+$/, "")}/responses`,
+		headers: {
+			"content-type": "application/json",
+			...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}),
+		},
+		modelId: parsed.id,
+	};
+}
+
+async function research(target: SmokeTarget, query: string, timeoutMs: number) {
+	const res = await fetch(target.endpoint, {
 		method: "POST",
-		headers: { "content-type": "application/json" },
+		headers: target.headers,
 		body: JSON.stringify({
-			model: cfg.model,
+			model: target.modelId,
 			input: query,
 			tools: [{ type: "web_search" }],
 		}),
-		signal: AbortSignal.timeout(cfg.timeoutMs),
+		signal: AbortSignal.timeout(timeoutMs),
 	});
 	if (!res.ok)
 		throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
@@ -36,9 +68,14 @@ async function research(query: string) {
 }
 
 /** A query needs a real search AND at least one citation to count as passing. */
-async function check(label: string, query: string): Promise<boolean> {
+async function check(
+	target: SmokeTarget,
+	timeoutMs: number,
+	label: string,
+	query: string,
+): Promise<boolean> {
 	try {
-		const r = await research(query);
+		const r = await research(target, query, timeoutMs);
 		const ok = r.searchCalls > 0 && r.citations.length > 0;
 		console.log(
 			`${ok ? "OK  " : "FAIL"} ${label.padEnd(22)} searchCalls=${r.searchCalls} citations=${r.citations.length}`,
@@ -54,35 +91,44 @@ async function check(label: string, query: string): Promise<boolean> {
 	}
 }
 
-if (!cfg.baseUrl) {
-	console.log(
-		"SKIPPED: no gateway baseUrl configured (aperture.json or websearch.json).",
-	);
-	process.exit(0);
+async function main(): Promise<void> {
+	const cfg = loadResearchConfig();
+	const target = resolveFromModelsJson(cfg.model);
+	if (!target) {
+		console.log(
+			`SKIPPED: "${cfg.model}" is not a provider/model reference in ~/.pi/agent/models.json.`,
+		);
+		return;
+	}
+
+	// Off-network is a skip, not a failure — the gateway lives on a tailnet.
+	const origin = new URL(target.endpoint).origin;
+	try {
+		await fetch(origin, { signal: AbortSignal.timeout(3000) });
+	} catch {
+		console.log(`SKIPPED: gateway ${origin} unreachable (off-network).`);
+		return;
+	}
+
+	console.log(`=== web_research smoke test (${cfg.model} via ${origin}) ===`);
+	const results = [
+		await check(
+			target,
+			cfg.timeoutMs,
+			"technical fact",
+			"What is the current stable version of Go? Cite the official source.",
+		),
+		await check(
+			target,
+			cfg.timeoutMs,
+			"recent news",
+			"Give one recent headline about the Anthropic Claude API, with the source URL.",
+		),
+	];
+
+	const passed = results.filter(Boolean).length;
+	console.log(`\n${passed}/${results.length} queries returned a cited answer`);
+	if (passed !== results.length) process.exitCode = 1;
 }
 
-// Off-network is a skip, not a failure — the gateway lives on a tailnet.
-try {
-	await fetch(cfg.baseUrl, { signal: AbortSignal.timeout(3000) });
-} catch {
-	console.log(`SKIPPED: gateway ${cfg.baseUrl} unreachable (off-network).`);
-	process.exit(0);
-}
-
-console.log(
-	`=== web_research smoke test (${cfg.model} via ${cfg.baseUrl}) ===`,
-);
-const results = [
-	await check(
-		"technical fact",
-		"What is the current stable version of Go? Cite the official source.",
-	),
-	await check(
-		"recent news",
-		"Give one recent headline about the Anthropic Claude API, with the source URL.",
-	),
-];
-
-const passed = results.filter(Boolean).length;
-console.log(`\n${passed}/${results.length} queries returned a cited answer`);
-process.exit(passed === results.length ? 0 : 1);
+await main();

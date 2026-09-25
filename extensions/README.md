@@ -5,10 +5,10 @@ pi extensions I write myself. Loaded from `~/.pi/agent/extensions/`.
 - **`dap/`** — `debug` tool: a DAP client (launch/breakpoints/stack/scopes/
   evaluate) vendored from `@piex-dev/dap` with upstream defects fixed and a
   user config layer restored.
-- **`websearch/`** — `web_research` (OpenAI's built-in web_search via the
-  Aperture gateway, host from `$APERTURE_GATEWAY_HOST` — see
-  `config/fish/aperture-gateway.fish`) and `web_fetch` (chrome-stripped page
-  fetch), replacing the removed `rpiv-web-tools`.
+- **`websearch/`** — `web_research` (OpenAI's built-in web_search, routed
+  through a `provider/model-id` reference resolved against pi's model
+  registry — `~/.pi/agent/models.json` by default) and `web_fetch`
+  (chrome-stripped page fetch), replacing the removed `rpiv-web-tools`.
 - **`loop-metrics/`** — `/loop-stats`: per-task AI usage console for
   `/loop`-managed repos. Task identity is the current git branch, scoped to
   repos with `.loop/config.json`; metrics (tokens, cost, duration, tool calls)
@@ -28,9 +28,9 @@ Not tracked here:
 
 - **Config for installed extensions** (`pi-rtk-optimizer/config.json`) lives
   in `../config/extensions/`. Those are settings, not code. `websearch/`'s
-  own optional override, `~/.pi/agent/extensions/websearch.json`, isn't
-  tracked here since the default (`$APERTURE_GATEWAY_HOST`) already covers
-  every machine that sources `config/fish/aperture-gateway.fish`.
+  own optional override, `~/.pi/agent/extensions/websearch.json`
+  (`{"model": "provider/id", "timeoutMs": …}`), isn't tracked here since
+  the default ref already covers every machine.
 - **Tool-managed files** such as `herdr-agent-state.ts`, which declares
   `// installed by herdr; reinstalling or updating the integration overwrites
   this file.` It is gitignored — versioning it would produce a phantom diff on
