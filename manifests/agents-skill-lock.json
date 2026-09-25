@@ -54,6 +54,15 @@
       "skillFolderHash": "b9dfd2e2dd19c90025f9ba0a79259c089419777b",
       "installedAt": "2026-08-06T21:02:01.708Z",
       "updatedAt": "2026-08-06T21:02:01.708Z"
+    },
+    "golang-pro": {
+      "source": "jeffallan/claude-skills",
+      "sourceType": "github",
+      "sourceUrl": "https://github.com/jeffallan/claude-skills.git",
+      "skillPath": "skills/golang-pro/SKILL.md",
+      "skillFolderHash": "e347d9842958ce46d5f0644ef6009304d648a964",
+      "installedAt": "2026-09-02T03:17:13.440Z",
+      "updatedAt": "2026-09-02T03:17:13.440Z"
     }
   },
   "dismissed": {
@@ -72,6 +81,6 @@
     "kimi-cli",
     "opencode",
     "warp",
-    "claude-code"
+    "pi"
   ]
 }
