@@ -8,6 +8,32 @@ here; this is for decisions, not every edit.
 The routing rules these entries produced live in `config/AGENTS.md`, inside
 the `<!-- BEGIN MYPI REFEREE -->` block.
 
+## models.json cost and context pinned to the gateway catalog
+
+The aperture providers in `config/models.json` had no `cost` blocks at all,
+and the openai-completions/openai-responses entries carried no
+`contextWindow`/`maxTokens`, so pi fell back to a uniform 128K/16K default —
+wrong for every model behind the gateway. The gateway already publishes the
+truth at `GET /v1/models`: per-model `context_window_tokens`,
+`max_output_tokens`, and per-token pricing, so those values are now copied
+into every aperture-* model entry (per-token prices multiplied by 1e6 to get
+pi's per-1M-token `cost` fields).
+
+Corrections this surfaced: GPT models are 1.05M (5.4/5.5) or 922K (5.6/6.x)
+context with 128K max output, not 128K/16K; kimi-k3 is 1M context with
+131072 max output. The bedrock entries already had the right sizes and only
+gained costs.
+
+Two judgment calls, both documented so they're easy to revisit: the gateway
+publishes no `input_cache_write` price for gpt-5.4/5.5, so cacheWrite is set
+to the input price (OpenAI charges cache writes at the full input rate; only
+reads are discounted); and where the gateway publishes separate 5m/1h cache
+write prices, the standard 5m price is used because pi has a single
+cacheWrite field. The catalog also lists five models with no models.json
+entry (claude-fable-5, claude-fable-5-1, claude-opus-4-6-v1, claude-opus-5-5,
+claude-sonnet-4-6) — deliberately not added; adding models is a routing
+decision, not bookkeeping.
+
 ## Memory moved from pi-hermes-memory to mnemosyne
 
 pi-hermes-memory was doing two jobs with very different weights: it kept a
