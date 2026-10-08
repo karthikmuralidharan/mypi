@@ -41,5 +41,8 @@
     "aperture-responses/gpt-5.5",
     "aperture-responses/gpt-5.6-luna"
   ],
-  "tuiMode": "fullscreen"
+  "tuiMode": "fullscreen",
+  "defaultTools": [
+    "+codemode"
+  ]
 }

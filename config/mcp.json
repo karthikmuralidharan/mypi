@@ -1,3 +1,19 @@
 {
-  "mcpServers": {}
+  "mcpServers": {
+    "atlassian": {
+      "url": "https://mcp.atlassian.com/v2/mcp",
+      "description": "Jira and Confluence on swicloud.atlassian.net: search, read and write issues, pages and comments",
+      "exposure": "deferred"
+    },
+    "glean": {
+      "url": "https://solarwinds-be.glean.com/mcp/default",
+      "exposure": "deferred",
+      "description": "SolarWinds company knowledge: wiki, Confluence, Jira, Drive, Slack and people search"
+    },
+    "circleci": {
+      "url": "https://mcp.circleci.com/v1/mcp",
+      "description": "CircleCI pipelines: inspect failed runs, read job logs, workflow status, rerun or cancel, find flaky tests",
+      "exposure": "deferred"
+    }
+  }
 }
