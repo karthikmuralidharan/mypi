@@ -57,8 +57,24 @@ if command -v fish >/dev/null 2>&1; then
     install_file "$REPO/config/fish/pi-fff-mode.fish" "$FISH_CONFD/pi-fff-mode.fish"
   [[ -f "$REPO/config/fish/go-bin-path.fish" ]] &&
     install_file "$REPO/config/fish/go-bin-path.fish" "$FISH_CONFD/go-bin-path.fish"
+  [[ -f "$REPO/config/fish/pi-node-ca.fish" ]] &&
+    install_file "$REPO/config/fish/pi-node-ca.fish" "$FISH_CONFD/pi-node-ca.fish"
 else
   echo "    skip fish conf.d files (fish not installed)"
+fi
+
+# Corporate TLS inspection (Cato Networks) breaks Node's CA bundle, so pi's MCP
+# client cannot reach mcp.atlassian.com. Export the Cato root the keychain
+# already trusts; pi-node-ca.fish points NODE_EXTRA_CA_CERTS at it.
+if [[ "$(uname)" == "Darwin" ]]; then
+  mkdir -p "$HOME/.config/certs"
+  if [[ ! -s "$HOME/.config/certs/cato-root.pem" ]]; then
+    security find-certificate -a -c Cato -p /Library/Keychains/System.keychain \
+      > "$HOME/.config/certs/cato-root.pem" 2>/dev/null
+    [[ -s "$HOME/.config/certs/cato-root.pem" ]] &&
+      echo "    exported Cato root -> ~/.config/certs/cato-root.pem" ||
+      echo "    no Cato root in keychain (fine when off the corporate network)"
+  fi
 fi
 
 install_file "$REPO/config/npm/package.json" "$A/npm/package.json"
