@@ -4,6 +4,7 @@ description: "Mirror files from an authenticated Google Drive folder to local di
 version: 1
 created: "2026-07-20"
 updated: "2026-07-20"
+disable-model-invocation: true
 ---
 ## When to Use
 Use when you need to download files from a Google Drive folder the user is logged into, but have no Drive API credentials — driving their real Chrome session via CDP. Also applies to any CDP automation on modern Chrome (v136+).
