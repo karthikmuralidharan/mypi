@@ -1,5 +1,5 @@
 {
-  "lastChangelogVersion": "0.87.1",
+  "lastChangelogVersion": "1.1.0",
   "defaultProvider": "aperture-bedrock",
   "defaultModel": "us.anthropic.claude-sonnet-5",
   "packages": [
@@ -16,13 +16,12 @@
     "npm:@juicesharp/rpiv-i18n",
     "npm:@juicesharp/rpiv-args",
     "npm:@juicesharp/rpiv-workflow",
-    "npm:pi-cmux",
     "npm:@juicesharp/rpiv-voice",
-    "npm:pi-mcp-adapter",
     "npm:@ff-labs/pi-fff",
     "npm:context-mode",
     "npm:pi-subagents",
-    "npm:@mnemosyne-oss/pi-mnemosyne"
+    "npm:@mnemosyne-oss/pi-mnemosyne",
+    "git:github.com/EveryInc/compound-engineering-plugin@compound-engineering-v3.30.4"
   ],
   "enableInstallTelemetry": false,
   "defaultThinkingLevel": "medium",
@@ -32,14 +31,29 @@
     "+skills/migrating-to-chainguard/SKILL.md",
     "-skills/redash-clickhouse-queries/SKILL.md"
   ],
-  "hideThinkingBlock": false,
+  "hideThinkingBlock": true,
   "enabledModels": [
+    "aperture-completions/gpt-5.4",
+    "aperture-completions/gpt-5.5",
+    "aperture-completions/gpt-6-sol",
+    "aperture-completions/gpt-5.6-sol",
+    "aperture-completions/gpt-6-astra",
+    "aperture-completions/gpt-6-luna",
+    "aperture-completions/gpt-5.6-luna",
+    "aperture-completions/gpt-5.6-terra",
+    "aperture-completions/us.moonshotai.kimi-k3",
     "aperture-bedrock/us.anthropic.claude-opus-5",
+    "aperture-bedrock/us.anthropic.claude-opus-4-8",
     "aperture-bedrock/us.anthropic.claude-sonnet-5",
     "aperture-bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0",
-    "aperture-completions/us.moonshotai.kimi-k3",
+    "aperture-responses/gpt-5.4",
     "aperture-responses/gpt-5.5",
-    "aperture-responses/gpt-5.6-luna"
+    "aperture-responses/gpt-6-sol",
+    "aperture-responses/gpt-5.6-sol",
+    "aperture-responses/gpt-6-astra",
+    "aperture-responses/gpt-6-luna",
+    "aperture-responses/gpt-5.6-luna",
+    "aperture-responses/gpt-5.6-terra"
   ],
   "tuiMode": "fullscreen",
   "defaultTools": [
