@@ -4,7 +4,7 @@ My [pi](https://github.com/earendil-works/pi) configuration, version controlled
 so a machine can be rebuilt from scratch.
 
 Tracks **configuration and work I authored**. Does not track **data** — memory,
-sessions, and caches stay local. See [docs/BOUNDARY.md](docs/BOUNDARY.md) for
+sessions, and caches stay local. See the commit history for
 exactly where that line sits and why.
 
 ## Layout
@@ -22,7 +22,6 @@ skills/                     the 7 skills I authored
 manifests/
   my-skills.txt               allowlist: my skills vs plugin skills
   agents-skill-lock.json      provenance for third-party ~/.agents/skills
-docs/BOUNDARY.md            the config/data boundary, and the reasoning
 docs/OMP-PORT-PLAN.md       researched oh-my-pi features worth porting
 bootstrap.sh                repo  -> machine  (restore)
 sync.sh                     machine -> repo   (capture)
@@ -85,7 +84,7 @@ git commit -am "add pi-lens, bump default model"
 - **Memory.** Durable cross-session memory lives in mnemosyne's SQLite store
   (`~/.hermes/mnemosyne/data/mnemosyne.db`) — irreplaceable but data, not
   config: different lifecycle, changes every session, contains work context.
-  Excluded for now; `docs/BOUNDARY.md` records how to add it later if that
+  Excluded for now; see the commit history for how to add it later if that
   call changes.
 - **Plugin content.** 36 `ce-*` skills and 67 agents are regenerated from
   `settings.json` `packages[]` rather than vendored, to keep diffs clean.

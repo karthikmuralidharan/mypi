@@ -202,7 +202,7 @@ Restore complete. Manual steps that cannot be automated:
                   joined (or bridge mode) for it to resolve.
   3. Trust      — pi re-prompts per directory on first use;
                   ~/.pi/agent/trust.json is machine-specific.
-  4. Memory     — data intentionally NOT restored (docs/BOUNDARY.md). The
+  4. Memory     — data intentionally NOT restored. The
                   mnemosyne CLI itself was installed above when uv was present;
                   if it warned, run: uv tool install mnemosyne-memory
   5. Natives    — if a tool errors with NODE_MODULE_VERSION,
