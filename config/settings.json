@@ -29,7 +29,10 @@
   "skills": [
     "-skills/nri-us-tax-filing/SKILL.md",
     "+skills/migrating-to-chainguard/SKILL.md",
-    "-skills/redash-clickhouse-queries/SKILL.md"
+    "-skills/redash-clickhouse-queries/SKILL.md",
+    "+skills/documenting-system-architecture/SKILL.md",
+    "-skills/deep-research/SKILL.md",
+    "-skills/glean-cli-research/SKILL.md"
   ],
   "hideThinkingBlock": true,
   "enabledModels": [
@@ -58,5 +61,8 @@
   "tuiMode": "fullscreen",
   "defaultTools": [
     "+codemode"
+  ],
+  "extensions": [
+    "-extensions/mtplx-request-policy.ts"
   ]
 }
