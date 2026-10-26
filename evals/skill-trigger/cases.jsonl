@@ -1,0 +1,23 @@
+{"id":"atl-01","prompt":"Pull the Confluence page at https://swicloud.atlassian.net/wiki/spaces/ENG/pages/558137345 and summarise the authorization model section.","expect":"atlassian-rest-cli","tags":["work-tooling","confluence"]}
+{"id":"atl-02","prompt":"I have a personal-space Confluence draft at /pages/edit-v2/904332801 that Glean cannot see. Get me its body text.","expect":"atlassian-rest-cli","tags":["work-tooling","confluence"]}
+{"id":"atl-03","prompt":"Create a Jira issue in the OBS project titled 'tunnel admin rework: authz contract' with a description drawn from the linked spec.","expect":"atlassian-rest-cli","tags":["work-tooling","jira"]}
+{"id":"ghs-01","prompt":"I have four dependent branches for the tunnel-admin rework. Set them up as a stack of PRs and push them.","expect":"gh-stack","tags":["work-tooling","git"]}
+{"id":"lfs-01","prompt":"Show me the Langfuse traces for the aiops-agents prompt from yesterday and find the slowest span.","expect":"langfuse","tags":["work-tooling","observability"]}
+{"id":"loop-01","prompt":"Run the loop on sh-connect issue #212.","expect":"loop","tags":["pipeline","loop"]}
+{"id":"loop-02","prompt":"Full loop on the resolver caching feature, from product spec through to PR and CI green.","expect":"loop","tags":["pipeline","loop"]}
+{"id":"loop-03","prompt":"The loop's sync.sh is matching the wrong JIRA issue by label. Fix find_jira_by_gh.","expect":"eng-loop-jira-gh-sync-tooling","tags":["pipeline","loop-tooling"]}
+{"id":"plan-01","prompt":"Before we write any code, produce a proper implementation plan for the tenant-scoped rate limiter.","expect":"ce-plan","tags":["pipeline","planning"]}
+{"id":"gfy-01","prompt":"I'm new to this repo. Explain its architecture and how the resolver relates to the dial path.","expect":"graphify","tags":["code","comprehension"]}
+{"id":"go-01","prompt":"Implement a worker pool with bounded concurrency and context cancellation for the signals ingester, with table-driven tests.","expect":"golang-pro","tags":["code","golang"]}
+{"id":"rig-01","prompt":"Build the retry wrapper with strict TDD — I want to see the test fail before any implementation.","expect":"ce-rigor","tags":["code","discipline"]}
+{"id":"rev-01","prompt":"Review this PR adversarially before I merge it. Be harsh about correctness and hidden coupling.","expect":"ce-code-review","tags":["code","review"]}
+{"id":"ste-01","prompt":"Rewrite docs/BOUNDARY.md so a non-native English reader can follow it. Keep it technical but plain.","expect":"simple-english","tags":["docs","writing"]}
+{"id":"arch-01","prompt":"Audit this event-driven pipeline and write up its architecture, including the gaps and technical debt you find.","expect":"documenting-system-architecture","tags":["docs","architecture"]}
+{"id":"nmv-01","prompt":"context-mode just started failing with NODE_MODULE_VERSION 127 but this module was compiled against 115. Sort it out.","expect":"rebuild-pi-native-modules","tags":["break-glass","native"]}
+{"id":"abs-01","prompt":"Rename the variable `cfg` to `config` in internal/resolver/dial.go.","expect":null,"tags":["abstain","mechanical"]}
+{"id":"abs-02","prompt":"What Go version does go.mod pin?","expect":null,"tags":["abstain","lookup"]}
+{"id":"abs-03","prompt":"Add a nil check to ResolveTarget before it dereferences opts.","expect":null,"tags":["abstain","mechanical"]}
+{"id":"abs-04","prompt":"Show me the last five commits on this branch.","expect":null,"tags":["abstain","lookup"]}
+{"id":"abs-05","prompt":"What does 'context deadline exceeded' mean in this stack trace?","expect":null,"tags":["abstain","explain"]}
+{"id":"abs-06","prompt":"Delete the unused import in cmd/server/main.go.","expect":null,"tags":["abstain","mechanical"]}
+{"id":"abs-07","prompt":"Bump the timeout constant in config.go from 30s to 60s.","expect":null,"tags":["abstain","mechanical"]}
