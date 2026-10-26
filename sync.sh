@@ -39,6 +39,25 @@ mkdir -p "$REPO/config/npm"
 cp "$A/npm/package.json" "$A/npm/package-lock.json" "$REPO/config/npm/"
 echo "    config/npm/package.json + package-lock.json"
 
+# The Aperture gateway publishes its own catalogue, so models.json can drift
+# behind it silently. Report that here rather than discovering it months later;
+# --check never writes, so a sync stays a capture-only operation.
+echo "==> aperture catalogue drift"
+if "$REPO/scripts/sync-aperture-models.py" --check >/tmp/aperture-drift.$$ 2>&1; then
+  echo "    models.json matches the gateway"
+else
+  rc=$?
+  if [[ $rc -eq 1 ]]; then
+    echo "    DRIFT — the gateway serves models that models.json does not list:"
+    sed -n '/=== added ===/,/=== field changes/p' /tmp/aperture-drift.$$ |
+      grep -E '^  [a-z]' | sed 's/^/    /'
+    echo "    run: scripts/sync-aperture-models.py   (then review git diff)"
+  else
+    echo "    skipped (gateway unreachable — is the tailnet up?)"
+  fi
+fi
+rm -f /tmp/aperture-drift.$$
+
 echo "==> extension config"
 mkdir -p "$REPO/config/extensions/pi-rtk-optimizer"
 [[ -f "$A/extensions/pi-rtk-optimizer/config.json" ]] &&
