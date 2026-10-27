@@ -15,6 +15,10 @@
             "output": 55.0,
             "cacheRead": 1.1,
             "cacheWrite": 13.75
+          },
+          "promptCache": {
+            "short": 300,
+            "long": 3600
           }
         },
         {
@@ -27,6 +31,10 @@
             "output": 55.0,
             "cacheRead": 0.275,
             "cacheWrite": 13.75
+          },
+          "promptCache": {
+            "short": 300,
+            "long": 3600
           }
         },
         {
@@ -44,7 +52,11 @@
             "cacheRead": 0.11,
             "cacheWrite": 1.375
           },
-          "name": "Claude Haiku 4.5 (US)"
+          "name": "Claude Haiku 4.5 (US)",
+          "promptCache": {
+            "short": 300,
+            "long": 3600
+          }
         },
         {
           "id": "us.anthropic.claude-haiku-5-5",
@@ -56,6 +68,10 @@
             "output": 0.55,
             "cacheRead": 0.011,
             "cacheWrite": 0.1375
+          },
+          "promptCache": {
+            "short": 300,
+            "long": 3600
           }
         },
         {
@@ -68,6 +84,10 @@
             "output": 27.5,
             "cacheRead": 0.55,
             "cacheWrite": 6.875
+          },
+          "promptCache": {
+            "short": 300,
+            "long": 3600
           }
         },
         {
@@ -85,7 +105,11 @@
             "cacheRead": 0.55,
             "cacheWrite": 6.875
           },
-          "name": "Claude Opus 4.8 (US)"
+          "name": "Claude Opus 4.8 (US)",
+          "promptCache": {
+            "short": 300,
+            "long": 3600
+          }
         },
         {
           "id": "us.anthropic.claude-opus-5",
@@ -102,7 +126,11 @@
             "cacheRead": 0.55,
             "cacheWrite": 6.875
           },
-          "name": "Claude Opus 5 (US)"
+          "name": "Claude Opus 5 (US)",
+          "promptCache": {
+            "short": 300,
+            "long": 3600
+          }
         },
         {
           "id": "us.anthropic.claude-opus-5-5",
@@ -114,6 +142,10 @@
             "output": 22.0,
             "cacheRead": 0.22,
             "cacheWrite": 5.5
+          },
+          "promptCache": {
+            "short": 300,
+            "long": 3600
           }
         },
         {
@@ -126,6 +158,10 @@
             "output": 16.5,
             "cacheRead": 0.33,
             "cacheWrite": 4.125
+          },
+          "promptCache": {
+            "short": 300,
+            "long": 3600
           }
         },
         {
@@ -143,7 +179,11 @@
             "cacheRead": 0.22,
             "cacheWrite": 2.75
           },
-          "name": "Claude Sonnet 5 (US)"
+          "name": "Claude Sonnet 5 (US)",
+          "promptCache": {
+            "short": 300,
+            "long": 3600
+          }
         },
         {
           "id": "us.anthropic.claude-sonnet-5-5",
@@ -155,6 +195,10 @@
             "output": 11.0,
             "cacheRead": 0.11,
             "cacheWrite": 2.75
+          },
+          "promptCache": {
+            "short": 300,
+            "long": 3600
           }
         }
       ]
@@ -174,7 +218,10 @@
             "cacheRead": 0.25,
             "cacheWrite": 2.5
           },
-          "name": "GPT 5.4"
+          "name": "GPT 5.4",
+          "promptCache": {
+            "short": 300
+          }
         },
         {
           "id": "gpt-5.5",
@@ -186,7 +233,10 @@
             "cacheRead": 0.5,
             "cacheWrite": 5.0
           },
-          "name": "GPT 5.5"
+          "name": "GPT 5.5",
+          "promptCache": {
+            "short": 300
+          }
         },
         {
           "id": "gpt-5.6-luna",
@@ -198,7 +248,10 @@
             "cacheRead": 0.02,
             "cacheWrite": 0.25
           },
-          "name": "GPT 5.6 Luna"
+          "name": "GPT 5.6 Luna",
+          "promptCache": {
+            "short": 300
+          }
         },
         {
           "id": "gpt-5.6-sol",
@@ -210,7 +263,10 @@
             "cacheRead": 0.4,
             "cacheWrite": 5.0
           },
-          "name": "GPT 5.6 Sol"
+          "name": "GPT 5.6 Sol",
+          "promptCache": {
+            "short": 300
+          }
         },
         {
           "id": "gpt-5.6-terra",
@@ -222,7 +278,10 @@
             "cacheRead": 0.2,
             "cacheWrite": 2.5
           },
-          "name": "GPT 5.6 Terra"
+          "name": "GPT 5.6 Terra",
+          "promptCache": {
+            "short": 300
+          }
         },
         {
           "id": "gpt-6-astra",
@@ -234,7 +293,10 @@
             "cacheRead": 1.0,
             "cacheWrite": 12.5
           },
-          "name": "GPT-6 Astra"
+          "name": "GPT-6 Astra",
+          "promptCache": {
+            "short": 300
+          }
         },
         {
           "id": "gpt-6-luna",
@@ -246,7 +308,10 @@
             "cacheRead": 0.01,
             "cacheWrite": 0.125
           },
-          "name": "GPT-6 Luna"
+          "name": "GPT-6 Luna",
+          "promptCache": {
+            "short": 300
+          }
         },
         {
           "id": "gpt-6-sol",
@@ -258,7 +323,10 @@
             "cacheRead": 0.2,
             "cacheWrite": 2.5
           },
-          "name": "GPT-6 Sol"
+          "name": "GPT-6 Sol",
+          "promptCache": {
+            "short": 300
+          }
         },
         {
           "id": "gpt-6.1-sol",
@@ -270,6 +338,9 @@
             "output": 10.0,
             "cacheRead": 0.1,
             "cacheWrite": 2.5
+          },
+          "promptCache": {
+            "short": 300
           }
         },
         {
@@ -282,7 +353,10 @@
             "cacheRead": 0.33,
             "cacheWrite": 4.125
           },
-          "name": "Kimi K3 (US)"
+          "name": "Kimi K3 (US)",
+          "promptCache": {
+            "short": 300
+          }
         }
       ]
     },
@@ -301,7 +375,10 @@
             "cacheRead": 0.25,
             "cacheWrite": 2.5
           },
-          "name": "GPT 5.4"
+          "name": "GPT 5.4",
+          "promptCache": {
+            "short": 300
+          }
         },
         {
           "id": "gpt-5.5",
@@ -313,7 +390,10 @@
             "cacheRead": 0.5,
             "cacheWrite": 5.0
           },
-          "name": "GPT 5.5"
+          "name": "GPT 5.5",
+          "promptCache": {
+            "short": 300
+          }
         },
         {
           "id": "gpt-5.6-luna",
@@ -325,7 +405,10 @@
             "cacheRead": 0.02,
             "cacheWrite": 0.25
           },
-          "name": "GPT 5.6 Luna"
+          "name": "GPT 5.6 Luna",
+          "promptCache": {
+            "short": 300
+          }
         },
         {
           "id": "gpt-5.6-sol",
@@ -337,7 +420,10 @@
             "cacheRead": 0.4,
             "cacheWrite": 5.0
           },
-          "name": "GPT 5.6 Sol"
+          "name": "GPT 5.6 Sol",
+          "promptCache": {
+            "short": 300
+          }
         },
         {
           "id": "gpt-5.6-terra",
@@ -349,7 +435,10 @@
             "cacheRead": 0.2,
             "cacheWrite": 2.5
           },
-          "name": "GPT 5.6 Terra"
+          "name": "GPT 5.6 Terra",
+          "promptCache": {
+            "short": 300
+          }
         },
         {
           "id": "gpt-6-astra",
@@ -361,7 +450,10 @@
             "cacheRead": 1.0,
             "cacheWrite": 12.5
           },
-          "name": "GPT-6 Astra"
+          "name": "GPT-6 Astra",
+          "promptCache": {
+            "short": 300
+          }
         },
         {
           "id": "gpt-6-luna",
@@ -373,7 +465,10 @@
             "cacheRead": 0.01,
             "cacheWrite": 0.125
           },
-          "name": "GPT-6 Luna"
+          "name": "GPT-6 Luna",
+          "promptCache": {
+            "short": 300
+          }
         },
         {
           "id": "gpt-6-sol",
@@ -385,7 +480,10 @@
             "cacheRead": 0.2,
             "cacheWrite": 2.5
           },
-          "name": "GPT-6 Sol"
+          "name": "GPT-6 Sol",
+          "promptCache": {
+            "short": 300
+          }
         },
         {
           "id": "gpt-6.1-sol",
@@ -397,6 +495,9 @@
             "output": 10.0,
             "cacheRead": 0.1,
             "cacheWrite": 2.5
+          },
+          "promptCache": {
+            "short": 300
           }
         }
       ]

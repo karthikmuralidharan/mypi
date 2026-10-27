@@ -16,8 +16,11 @@ Design notes, learned the hard way:
 * A provider is only written if it ends up with at least one model. An empty
   models array makes every `enabledModels` pattern match nothing, which leaves
   pi with no usable model at all.
-* `promptCache` is deliberately NOT emitted. Declaring it enables cache
-  warming, which is a separate decision that was explicitly reverted.
+* `promptCache` is derived from the pricing the gateway publishes, not
+  hardcoded. A model is declared cache-capable only when it prices
+  `input_cache_read`, and the 1h tier is claimed only when
+  `input_cache_write_1h` exists. Declaring a lifetime is what makes a model
+  eligible for cache warming (docs/settings.md, `cacheWarming`).
 * Models are assigned to a provider by their advertised `supported_endpoints`,
   not by guessing from the id. A model declared under the wrong api registers
   fine and then fails at request time.
@@ -104,6 +107,21 @@ def fetch(base_url, api_key):
         sys.exit(2)
 
 
+def is_complete(gw):
+    """Does the gateway describe this model well enough to configure it?
+
+    A bare `{"id": ...}` entry is worse than absent: pi falls back to a uniform
+    128K/16K default and zero cost, so limits are wrong and spend on that model
+    silently reports as free. The gateway publishes ids before their metadata
+    is filled in, so skip those until it catches up.
+    """
+    pricing = gw.get("pricing") or {}
+    return bool(gw.get("context_window_tokens")
+                and gw.get("max_output_tokens")
+                and pricing.get("input")
+                and pricing.get("output"))
+
+
 def build_entry(gw, existing):
     """Gateway fields overlay an existing entry; hand-set fields survive.
 
@@ -131,6 +149,17 @@ def build_entry(gw, existing):
             cost[key] = v
     if cost:
         out["cost"] = cost
+
+    # Cache warming only runs for a model that declares a lifetime, so derive
+    # one from what the gateway actually prices. `input_cache_read` is the
+    # evidence that a prefix cache exists at all; 300s is the conservative end
+    # of the short tier. Claim 1h only where the gateway prices it, which on
+    # this gateway is the Bedrock Anthropic models.
+    if pricing.get("input_cache_read"):
+        pc = {"short": 300}
+        if pricing.get("input_cache_write_1h"):
+            pc["long"] = 3600
+        out["promptCache"] = pc
     return out
 
 
@@ -162,7 +191,7 @@ def main():
         by_id.setdefault(m["id"], m)   # gateway lists some ids twice
     print(f"gateway: {len(catalogue)} records, {len(by_id)} distinct ids")
 
-    added, updated, unrouted = {}, {}, []
+    added, updated, unrouted, incomplete = {}, {}, [], []
     for name, matches in ROUTES.items():
         prov = providers.get(name)
         if prov is None:
@@ -171,6 +200,12 @@ def main():
         rebuilt, new_ids, changed = [], [], []
         for mid, gw in sorted(by_id.items()):
             if not matches(gw.get("supported_endpoints") or []):
+                continue
+            # Never introduce a model the gateway has not described. An entry
+            # already in models.json is kept as-is, since merging only
+            # overlays fields that are actually published.
+            if mid not in have and not is_complete(gw):
+                incomplete.append(f"{name}/{mid}")
                 continue
             entry = build_entry(gw, have.get(mid))
             if mid not in have:
@@ -218,6 +253,13 @@ def main():
         print("  These speak Anthropic Messages and need their own provider")
         print('  block with api "anthropic-messages":')
         for i in unrouted:
+            print(f"    {i}")
+
+    if incomplete:
+        print(f"\n=== skipped, gateway metadata incomplete ({len(incomplete)}) ===")
+        print("  No context window, max output or pricing published yet.")
+        print("  Re-run once the gateway fills them in.")
+        for i in incomplete:
             print(f"    {i}")
 
     if a.check:
