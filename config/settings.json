@@ -65,6 +65,6 @@
   "extensions": [
     "-extensions/mtplx-request-policy.ts"
   ],
-  "cacheWarming": "idle",
+  "cacheWarming": "off",
   "showCacheMissNotices": true
 }
