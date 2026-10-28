@@ -5,7 +5,6 @@ version: 1
 created: "2026-07-26"
 updated: "2026-08-27"
 ---
-
 ## When to Use
 
 Use for a **feature-sized** unit of work that should go through the full
@@ -56,83 +55,75 @@ At every gate, present the artifact and wait. Do not proceed on ambiguity.
 
 ## The ship gate (Stage 8–9): rearms on every push
 
-Stage 8 (PR + review) and Stage 9 (CI) are **not two one-shot stages**. They
-are one converging gate. A push always rearms it in full, on both axes:
+**Every push gets an immediate `"$EL" ship-gate` call** — never `ci-watch` or
+`pr-check` individually, and never "push now, check later". This applies to
+the first push in Stage 8, not only fix-pushes. Before calling the loop done
+shipping, run `"$EL" where` to confirm the last clear pass still matches the
+branch tip.
 
-- Fixing a CI failure and pushing does **not** carry forward an earlier
-  review approval. A new commit can trigger a fresh Copilot pass or make a
-  prior human approval stale.
-- Addressing a review comment and pushing does **not** carry forward a
-  previous green CI run. CI must be re-watched from that commit.
-
-The loop is not done shipping until **one pass** finds both clear, with no
-push in between:
-
-```bash
-"$EL" ship-gate
-```
-
-`ship-gate` composes `ci-watch` (CI, deterministic, existing) and `pr-check`
-(review, deterministic, checks for `CHANGES_REQUESTED` and unresolved review
-threads, including Copilot's line comments) into **one call, one exit
-code**. It always runs both, so a CI failure never hides an unrelated review
-problem. If it exits non-zero, fix, push, and run `ship-gate` again from the
-top. Never special-case "just a CI fix" or "just a review nit" as a reason
-to skip half the check. `ship-gate` always checks both.
-
-**Push and `ship-gate` are one action, not two steps to remember
-separately.** Every push in Stage 8 (the first one and every fix after it)
-is immediately followed by `"$EL" ship-gate` — do not push, move on to
-something else, and come back to it later. `ci-watch` treats a repo with no
-CI configured as clear rather than failing on it (checked directly against
-a real no-CI repo), so it is always safe to run right after the first push,
-before any check could plausibly exist yet.
-
-On a clear pass, `ship-gate` records the commit it passed against in
-`.loop/state/<branch>.json`. Run `"$EL" where` at any point to check that
-this recorded commit still matches the branch tip. If it does not match, a
-push landed after the last clear pass, and `where` reports this as drift —
-a mechanical check for the exact mistake this section warns about, not only
-a reminder to remember it.
+Rearm semantics, the no-CI case and what `ship-gate` composes:
+`references/operations.md`.
 
 ## Run state and resuming a session
 
-Every branch has one state file: `.loop/state/<branch>.json`. The scripts
-write to it as a side effect of work they already do — `gate-pass` records
-gate approval, `sync create-issue`/`mirror-jira` record the issue and JIRA
-key, `sync auto-status` records the PR number, and `ship-gate` records its
-last clear commit. Nothing here is a second copy of information the agent
-must remember to update by hand; each fact is written once, by the call
-that already produces it.
+**Starting a new session, or returning after a compaction: run `"$EL" where`
+before anything else.** Do not re-derive stage or gate state from
+conversation history — history can be summarized away, the state file and
+live `gh`/JIRA/git facts cannot.
 
-This solves a real problem: a `/loop` run can span many turns, a session
-restart, or a compaction. Shell variables like `$ISSUE` and `$JIRA` do not
-survive any of those. The state file does.
+State layout, field meanings and resume behaviour:
+`references/operations.md`.
 
-**Starting a new session, or resuming one, always run this first:**
+## Replan mode (the spec was wrong)
+
+After GATE 2 the issue body is the source of truth, but the feedback that
+invalidates it arrives later — in review, in CI, in a Copilot comment, or
+when a seam turns out not to exist as specified.
+
+**The agent decides to enter. The human decides to leave.**
 
 ```bash
-"$EL" where
+"$EL" replan start --evidence "<the feedback that invalidated the spec>"
+# regenerate behaviour criteria + technical spec + plan TOGETHER
+# take the revised plan back through plannotator
+"$EL" gate-pass 1 --note "<what was approved>"
+"$EL" replan apply --body-file spec.md --subitem "..." --subitem "..."
 ```
 
-It reports, for the current branch: whether each gate is passed, whether
-the tracked GitHub issue and JIRA key still resolve, whether a PR exists
-and matches what state recorded, and whether the ship gate is still clear
-for the current commit. Exit code 0 means state and live facts agree —
-pick the stage back up from what `where` reports. Exit code 1 means it
-found drift; read the reported lines before doing anything else, since one
-of the tracked facts (an issue, a JIRA key, a PR, or the ship gate) no
-longer matches reality.
+- `start` needs **evidence** — a review thread, a failing run, a tool result.
+  "The implementation turned out awkward" is a Stage 5 design discussion, not
+  a replan. It re-arms GATE 1, so the plan is formally unapproved.
+- **Do not resume Stage 5 coding while a replan is open.** Continuing against
+  a spec you have declared wrong is the drift this mode exists to prevent.
+- `apply` requires GATE 1 re-approved. It updates the body, reconciles
+  sub-issues as a true revision (unchanged stay, additions added, dropped
+  ones **closed with the reason**, never deleted), comments on JIRA, and
+  bumps the revision counter.
+- **`apply` re-arms the ship gate.** The previous clear pass was earned
+  against a contract that no longer holds, so `loop ship-gate` must clear
+  again before shipping.
+- **Then get an independent review with fresh context** — see below.
 
-`sync status` and `sync auto-status` read `--jira` and `--pr` from state
-when the flag is omitted, so a resumed session does not need those values
-held in memory to keep driving the ticket status.
+Full flow, state fields and reconciliation rules:
+`references/operations.md`.
 
-`LOOP_SKIP_GATE_CHECK=1` bypasses the GATE 2 check on `sync`'s create/mutate
-subcommands. This exists for standalone or test runs of `sync.sh` outside a
-real `/loop` run (for example, the integration-test workflow in this
-skill's own toolkit calls `sync bootstrap` directly). Do not set it during
-a real run to skip a gate.
+## Independent review with fresh context
+
+After the ship gate clears — and always after a replan — dispatch a
+read-only reviewer that has **not** seen this session:
+
+```text
+subagent(agent: "reviewer", context: "fresh",
+         task: "Read the spec and plan in GH issue #<n>, then review the diff
+                on this branch against it. Report whether the code matches
+                the contract and flag anything it misses. Read-only: do not
+                edit files.")
+```
+
+Fresh context is the point, not an optimisation. A reviewer carrying this
+session's history inherits the assumptions that produced the spec, so it
+tends to confirm the design rather than test it. Synthesize the findings in
+this session and make the fixes here.
 
 ## Prerequisites (run once per repo)
 
@@ -186,12 +177,33 @@ isolated worktree when the change is non-trivial (see `ce-worktree`).
 
 ### Stage 2 — Technical spec + mermaid (GATE 1 begins here)
 
-- Co-develop a _technical_ spec from the product spec (use `ce-plan` thinking).
-  Capture key workflows as **mermaid `sequenceDiagram`** blocks (they render
-  natively in the GitHub issue body — the source of truth). Cover the main
-  happy path plus the important failure/edge flows.
-- Where the design touches unclear dependencies, use **graphify** as an LLM
-  wiki to ground it (see Stage 3a), and cite what you learned in the spec.
+- **Read `references/technical-spec.md` first.** It defines the five required
+  sections and the self-check that runs before GATE 1.
+- Co-develop a _technical_ spec from the product spec (use `ce-plan` thinking)
+  with these sections, in this order:
+  1. **Architecture decision** — the **seam** added, not just a pattern name.
+     State how it composes (wrap, substitute, sequence or inject), how many
+     existing call sites change and why, what was rejected, the repo
+     convention it matches, and what it makes harder later. The standing
+     convention is **additive integration**: extend through clean seams
+     without modifying existing call sites, so "call sites touched: 0" is the
+     target and any other number needs a reason. Ground the "fits because"
+     claim in the codebase, not in taste.
+  2. **Data models** — a row per entity touched: `new`/`modified`/`removed`,
+     the fields, and the compatibility consequence.
+  3. **Interfaces** — a row per caller-visible signature: before, after,
+     whether it breaks, and the consumer count.
+  4. **Folder structure** — a tree of only the changed paths, each marked
+     `NEW`/`MOD`/`DEL`.
+  5. **Workflows** — **mermaid `sequenceDiagram`** blocks (they render
+     natively in the GitHub issue body — the source of truth). Cover the main
+     happy path plus the failure/edge flows the changes above introduce.
+- Get the consumer counts and dependency facts from tools, not memory:
+  `lsp_navigation` references for call sites, `graphify query "<question>"`
+  for cross-module reach (see Stage 3a). Cite what you learned in the spec.
+  A breaking change with an unknown blast radius is not specified yet.
+- For an unfamiliar system, invoke `/skill:documenting-system-architecture`
+  for the wider audit before deciding the pattern.
 
 ### Stage 3 — Plannotate the plan
 
@@ -215,17 +227,27 @@ isolated worktree when the change is non-trivial (see `ce-worktree`).
 
 The **GitHub issue body is the source of truth**. Build it as:
 
-```
+````text
 ## Product spec
 <functional + non-functional -- simple-english compliant, carried from Stage 1>
 ## Behaviour criteria
 - [ ] Given ... When ... Then ...
 ## Technical spec
-<prose + ```mermaid sequenceDiagram ...``` >
+### Architecture decision
+<seam added | composes by | call sites touched | rejected | fits because
+(cited) | costs>
+### Data models
+| Entity | Change | Fields | Compatibility |
+### Interfaces
+| Interface | Before | After | Breaking | Consumers |
+### Folder structure
+<tree of changed paths only, each marked NEW/MOD/DEL>
+### Workflows
+<```mermaid sequenceDiagram ...```>
 ## Plan
 - [ ] work item 1
 - [ ] work item 2
-```
+````
 
 - **Find the parent epic first and confirm** (never guess):
   `"$EL" find-epic "<feature keywords>"` → present candidates → the human
@@ -370,89 +392,42 @@ loop done shipping, not a first-time run:
 
 ## Automation surface (what is code vs. judgment)
 
-Hard-automated (scripts, deterministic, idempotent):
-- Atlassian auth + config (`loop setup`, `common.sh`).
-- Epic discovery (`find-epic`).
-- GH issue + real sub-issues, JIRA story/sub-task mirror, bidirectional
-  cross-link, status transitions incl. PR-state-driven auto-status, and the
-  GATE-2 create+mirror sequence as one call (`sync`, incl. `bootstrap`).
-- CI tailing + failing-log surfacing (`ci-watch`).
-- Review-thread / changes-requested check (`pr-check`) — the ship gate's
-  review-side counterpart to `ci-watch`.
-- The ship gate itself as one call/one exit code (`ship-gate` = `ci-watch` +
-  `pr-check`).
-- Gate approval, tracked issue/JIRA/PR, and last-clear-ship-gate commit, all
-  persisted per branch and enforced or checked at the point of use
-  (`gate-pass`, `require_gate` inside `sync`, `where`).
-
-Guided (human-in-the-loop, judgment-heavy — orchestrated, not scripted):
-- Brainstorm/spec/plan via the `ce-*` skills, in this session.
-- Implement/review via **subagent dispatch** of `ce-work`/`ce-code-review` —
-  guided in the sense that a human still approves the plan and the findings,
-  but the reasoning itself runs in a subagent, not this session.
-- plannotator plan + code review UIs.
-- graphify wiki queries/refresh.
+What is enforced by code and what stays judgment:
+`references/operations.md`.
 
 ## Pitfalls
 
-- **Never** run a `sync` **create/mutate** subcommand (`create-issue`,
-  `mirror-jira`, `add-subissue`, `mirror-subtask`, `link`, `bootstrap`)
-  before GATE 2 approval. This is enforced (`require_gate 2` dies with a
-  clear message), not only a rule to remember — but `LOOP_SKIP_GATE_CHECK=1`
-  can bypass it, so do not set that variable during a real run. `sync
-  status`/`sync auto-status` are exempt once the ticket is confirmed.
-- **Never** guess the epic — always `find-epic` and confirm.
-- **Never** treat a push as clearing only the check it was meant to fix. A
-  CI-only fix can still be sitting on stale/unresolved review threads; a
-  review-only fix still needs a fresh CI run. **Every push gets an
-  immediate `"$EL" ship-gate` call** (never `ci-watch`/`pr-check`
-  individually, and never "push now, check later") — this applies to the
-  first push in Stage 8 too, not only fix-pushes. Before calling the loop
-  done shipping, also run `"$EL" where` to confirm the last clear pass still
-  matches the branch tip.
-- A repo with no CI configured is common, not an error — `ci-watch` detects
-  "no checks reported" and treats it as clear rather than failing (fixed
-  and verified directly against a real no-CI repo; earlier it reported a
-  false CI failure indistinguishable from a real one).
-- `pr-check` only sees formal reviews and line-level review threads — a
-  bot/human comment posted as a plain top-level PR comment won't be caught;
-  skim the PR comment stream by eye too before calling the ship gate clear.
-- JIRA Cloud v3 needs ADF for description/create bodies; `common.sh adf_doc`
-  handles it. Team-managed projects link stories to epics via `fields.parent`,
-  not the classic epic-link custom field (verified for SWONE).
-- This repo has **no local `.github/workflows`** — CI is org-level, so
-  `ci-watch` resolves runs by branch, not by workflow name. Other repos with
-  local workflows still work (same branch-based resolution).
-- Integration tests must use real collaborators; a mock defeats Stage 7.
-- Keep `.loop/` gitignored (setup does this) — it may hold local config and
-  run state.
+Hard rules. Enforced by the scripts where noted, not only remembered.
+
+- **Never** run a `sync` **create/mutate** subcommand before GATE 2 approval
+  — enforced by `require_gate 2`, and do not set `LOOP_SKIP_GATE_CHECK=1` on
+  a real run.
+- **Never** guess the epic — always `find-epic` and confirm with the human.
+- **Never** treat a push as clearing only the check it was meant to fix.
+  Every push gets a full `ship-gate`.
 - **Never** skip the `simple-english` pass on the Stage 1 product spec — the
-  Stage 4 issue body inherits that section verbatim, so slop that leaks in
-  at Stage 1 ships straight into the tracked issue.
-- **Starting a new session or returning after a compaction**: run `"$EL"
-  where` before anything else. Do not re-derive stage/gate state from
-  conversation history alone — history can be summarized away; the state
-  file and live `gh`/JIRA/git facts cannot.
-- Dispatching `ce-work`/`ce-code-review` to a subagent (Stage 5/6) still
-  needs this session to enforce the gates and hard rules above — a
-  subagent implementing the plan does not bypass GATE 1/GATE 2, since
-  those gates sit in front of Stage 4/5, before any subagent is dispatched.
+  Stage 4 issue body inherits that section verbatim.
+- **Never** assert a consumer count, or that "the repo already does it this
+  way", from memory. Check with `lsp_navigation` and `graphify`.
+- **A technical spec of prose and one diagram cannot be refined.** It needs
+  the five sections in `references/technical-spec.md`, and a pattern name is
+  not an architecture decision — the seam, how it composes, and the call
+  sites it forces are.
+- Integration tests must use real collaborators; a mock defeats Stage 7.
+- Keep `.loop/` gitignored (setup does this).
+- Dispatching `ce-work`/`ce-code-review` to a subagent still leaves gate
+  enforcement with this session.
+
+Platform quirks and failure modes behind these: `references/pitfalls.md`.
 
 ## Verification
 
-- `loop config` prints the resolved repo/site/project.
-- `loop find-epic <kw>` returns candidate epics (auth + project OK).
-- `sync` re-runs are no-ops when the counterpart already exists (idempotent).
-- `sync` create/mutate subcommands refuse to run before `loop gate-pass 2`
-  has recorded approval for the branch, and proceed once it has.
-- `loop ship-gate` exits 0 only when CI is green and the PR is review-clear
-  in the same pass — that's the actual "ready to merge" signal, not either
-  underlying check alone. On a clear pass, it records the passing commit.
-- `loop where` exits 0 when the state file agrees with live `gh`/JIRA/git
-  facts, and exits 1 with the mismatched fact named, when it does not.
-- A completed run leaves: a GH issue (spec source of truth) with sub-issues,
-  a mirrored JIRA story/sub-tasks under the confirmed epic, cross-links both
-  ways, a merged PR closing the issue, and green CI.
-- The issue body's `## Product spec` section passes the `simple-english`
-  self-check: no sentence over the 25-word descriptive cap, no banned modals
-  or contractions, no filler words.
+A completed run leaves: a GH issue (spec source of truth) with sub-issues, a
+mirrored JIRA story/sub-tasks under the confirmed epic, cross-links both
+ways, a merged PR closing the issue, and green CI.
+
+The Stage 2 spec carries all five sections from
+`references/technical-spec.md`, names the seam it adds, and states the count
+of existing call sites it changes.
+
+Per-command checks: `references/operations.md`.

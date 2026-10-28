@@ -8,6 +8,9 @@
 #
 # Subcommands:
 #   create-issue   --title T --body-file F [--label L]...      -> prints "#<n>"
+#   update-issue   [--gh <n>] --body-file F                     -> prints "#<n>"
+#   list-subissues [--parent <n>]                 -> [{number,title,state}]
+#   close-subissue --gh <n> [--reason TEXT]                     -> prints "#<n>"
 #   mirror-jira    --gh <n> --epic SWONE-K [--type Story]       -> prints JIRA key
 #   add-subissue   --parent <n> --title T [--body-file F]       -> prints "#<n>"
 #   mirror-subtask --gh <n> --jira-parent SWONE-K               -> prints JIRA key
@@ -285,10 +288,74 @@ cmd_bootstrap() {
         '{issue:$issue, jira:$jira, subissues:$subs}'
 }
 
+# ---------------------------------------------------------------------------
+# update-issue: replace the body of the spec issue. The body is the source of
+# truth, so this is how a revision lands. Naturally idempotent (same body in,
+# same body out), and it never touches title, labels or sub-issue links.
+# ---------------------------------------------------------------------------
+cmd_update_issue() {
+    require_gate 2
+    parse_args "$@"
+    local gh="${ARGS[gh]:-$(state_read '.issue')}"
+    local body_file="${ARGS["body-file"]:?--body-file required}"
+    [ -n "$gh" ] || die "--gh required (none recorded in state yet)"
+    [ -f "$body_file" ] || die "body file not found: $body_file"
+    gh issue edit "${gh#\#}" --repo "$GH_REPO" --body-file "$body_file" >/dev/null
+    log "updated body of GH issue $gh"
+    echo "$gh"
+}
+
+# ---------------------------------------------------------------------------
+# list-subissues: the live sub-issue set of a parent, as JSON
+# [{number,title,state}]. Read from GitHub rather than state on purpose --
+# reconciliation must compare against what is actually there, the same reason
+# `loop where` trusts live facts over the state file.
+# ---------------------------------------------------------------------------
+cmd_list_subissues() {
+    parse_args "$@"
+    local parent="${ARGS[parent]:-$(state_read '.issue')}"
+    [ -n "$parent" ] || die "--parent required (none recorded in state yet)"
+    gh api graphql -f query='query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){issue(number:$n){subIssues(first:100){nodes{number title state}}}}}' \
+        -f o="${GH_REPO%/*}" -f r="${GH_REPO#*/}" -F n="${parent#\#}" \
+        -q '.data.repository.issue.subIssues.nodes' 2>/dev/null || echo '[]'
+}
+
+# ---------------------------------------------------------------------------
+# close-subissue: close a sub-issue that a revision dropped, with the reason
+# recorded as a comment. Never deletes and never unlinks -- the plan item is
+# gone, but its history and any discussion on it stay reachable from the
+# parent. Its mirrored JIRA sub-task is moved to Done rather than deleted.
+# ---------------------------------------------------------------------------
+cmd_close_subissue() {
+    require_gate 2
+    parse_args "$@"
+    local gh="${ARGS[gh]:?--gh required}" reason="${ARGS[reason]:-dropped by a plan revision}"
+    local n="${gh#\#}"
+    local st
+    st="$(gh issue view "$n" --repo "$GH_REPO" --json state -q .state 2>/dev/null || echo UNKNOWN)"
+    if [ "$st" = "CLOSED" ]; then
+        log "sub-issue #$n already closed (no-op)"
+        echo "#$n"
+        return
+    fi
+    gh issue comment "$n" --repo "$GH_REPO" --body "Closed by a plan revision: $reason" >/dev/null
+    gh issue close "$n" --repo "$GH_REPO" >/dev/null
+    local jkey
+    jkey="$(find_jira_by_gh "$n" || true)"
+    if [ -n "$jkey" ]; then
+        cmd_status --jira "$jkey" --to "Done" || warn "could not transition $jkey to Done"
+    fi
+    log "closed sub-issue #$n ($reason)"
+    echo "#$n"
+}
+
 sub="${1:-}"
 shift || true
 case "$sub" in
 create-issue) cmd_create_issue "$@" ;;
+update-issue) cmd_update_issue "$@" ;;
+list-subissues) cmd_list_subissues "$@" ;;
+close-subissue) cmd_close_subissue "$@" ;;
 add-subissue) cmd_add_subissue "$@" ;;
 mirror-jira) cmd_mirror_jira "$@" ;;
 mirror-subtask) cmd_mirror_subtask "$@" ;;
@@ -297,5 +364,5 @@ status) cmd_status "$@" ;;
 auto-status) cmd_auto_status "$@" ;;
 bootstrap) cmd_bootstrap "$@" ;;
 verify) jira_verify ;;
-*) die "usage: sync.sh {create-issue|add-subissue|mirror-jira|mirror-subtask|link|status|auto-status|bootstrap|verify} ..." ;;
+*) die "usage: sync.sh {create-issue|update-issue|add-subissue|list-subissues|close-subissue|mirror-jira|mirror-subtask|link|status|auto-status|bootstrap|verify} ..." ;;
 esac
