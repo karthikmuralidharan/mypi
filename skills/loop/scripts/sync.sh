@@ -9,6 +9,7 @@
 # Subcommands:
 #   create-issue   --title T --body-file F [--label L]...      -> prints "#<n>"
 #   update-issue   [--gh <n>] --body-file F                     -> prints "#<n>"
+#   archive-spec   [--gh <n>] --revision N [--reason TEXT]      -> prints "#<n>"
 #   list-subissues [--parent <n>]                 -> [{number,title,state}]
 #   close-subissue --gh <n> [--reason TEXT]                     -> prints "#<n>"
 #   mirror-jira    --gh <n> --epic SWONE-K [--type Story]       -> prints JIRA key
@@ -349,11 +350,68 @@ cmd_close_subissue() {
     echo "#$n"
 }
 
+# ---------------------------------------------------------------------------
+# archive-spec: post the CURRENT issue body as a collapsed comment before a
+# revision replaces it. The body stays the single readable source of truth;
+# the superseded contract stays auditable in the issue itself rather than
+# only in GitHub's edit history. Collapsed so a long-lived issue with several
+# revisions is still readable.
+# ---------------------------------------------------------------------------
+cmd_archive_spec() {
+    require_gate 2
+    parse_args "$@"
+    local gh="${ARGS[gh]:-$(state_read '.issue')}"
+    local rev="${ARGS[revision]:?--revision required}"
+    local reason="${ARGS[reason]:-}"
+    [ -n "$gh" ] || die "--gh required (none recorded in state)"
+    local n="${gh#\#}"
+
+    local body
+    body="$(gh issue view "$n" --repo "$GH_REPO" --json body -q .body)" ||
+        die "could not read body of #$n"
+    if [ -z "${body//[[:space:]]/}" ]; then
+        warn "issue #$n has an empty body — nothing to archive"
+        return 0
+    fi
+
+    local tmp
+    tmp="$(mktemp)"
+    {
+        printf '### Superseded spec — revision %s\n\n' "$rev"
+        [ -n "$reason" ] && printf 'Revised because: %s\n\n' "$reason"
+        printf 'This is the contract that was approved before revision %s.\n' "$((rev + 1))"
+        printf 'The issue body above is the current one.\n\n'
+        printf '<details>\n<summary>Spec as of revision %s</summary>\n\n' "$rev"
+        # Fence it so the archived headings do not register as issue headings,
+        # and use four backticks since the spec itself contains ```mermaid.
+        printf '````markdown\n'
+        printf '%s\n' "$body"
+        printf '````\n\n</details>\n'
+    } >"$tmp"
+
+    # GitHub caps a comment at 65536 characters.
+    local size
+    size=$(wc -c <"$tmp")
+    if [ "$size" -gt 65000 ]; then
+        warn "archived spec is ${size} bytes — too large for one comment; truncating"
+        local keep
+        keep="$(head -c 64000 "$tmp")"
+        printf '%s\n\n[truncated — see the edit history for the full prior body]\n````\n\n</details>\n' \
+            "$keep" >"$tmp"
+    fi
+
+    gh issue comment "$n" --repo "$GH_REPO" --body-file "$tmp" >/dev/null
+    rm -f "$tmp"
+    log "archived revision $rev of #$n as a comment"
+    echo "#$n"
+}
+
 sub="${1:-}"
 shift || true
 case "$sub" in
 create-issue) cmd_create_issue "$@" ;;
 update-issue) cmd_update_issue "$@" ;;
+archive-spec) cmd_archive_spec "$@" ;;
 list-subissues) cmd_list_subissues "$@" ;;
 close-subissue) cmd_close_subissue "$@" ;;
 add-subissue) cmd_add_subissue "$@" ;;
@@ -364,5 +422,5 @@ status) cmd_status "$@" ;;
 auto-status) cmd_auto_status "$@" ;;
 bootstrap) cmd_bootstrap "$@" ;;
 verify) jira_verify ;;
-*) die "usage: sync.sh {create-issue|update-issue|add-subissue|list-subissues|close-subissue|mirror-jira|mirror-subtask|link|status|auto-status|bootstrap|verify} ..." ;;
+*) die "usage: sync.sh {create-issue|update-issue|archive-spec|add-subissue|list-subissues|close-subissue|mirror-jira|mirror-subtask|link|status|auto-status|bootstrap|verify} ..." ;;
 esac
