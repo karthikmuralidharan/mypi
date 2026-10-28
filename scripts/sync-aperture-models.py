@@ -32,6 +32,7 @@ Usage:
 """
 import argparse
 import json
+import re
 import shutil
 import ssl
 import sys
@@ -122,16 +123,34 @@ def is_complete(gw):
                 and pricing.get("output"))
 
 
+# Claude sonnet/opus/haiku support extended thinking, but the gateway publishes
+# no capability flag for it. Without `reasoning: true` pi treats the model as
+# non-thinking and `/thinking` offers no levels at all, so a newly discovered
+# Claude model silently loses level switching. Seed it for these three families
+# only -- `claude-fable-*` is not a family whose thinking support is verified,
+# and the gpt-* entries genuinely do not take a level here.
+CLAUDE_REASONING_RE = re.compile(r"anthropic\.claude-(sonnet|opus|haiku)-")
+
+
+def seeds_reasoning(model_id):
+    """True when a NEW entry for this id should declare extended thinking."""
+    return bool(CLAUDE_REASONING_RE.search(model_id))
+
+
 def build_entry(gw, existing):
     """Gateway fields overlay an existing entry; hand-set fields survive.
 
-    Only fields the gateway actually publishes are written. `input` and
-    `reasoning` are never invented: the existing gpt-* entries omit both and
-    work, so defaulting them here would assert image support and extended
-    thinking that upstream never claimed.
+    Only fields the gateway actually publishes are written. `input` is never
+    invented: the existing gpt-* entries omit it and work, so defaulting it
+    would assert image support upstream never claimed. `reasoning` is the one
+    exception, and only on creation for the Claude families above, because a
+    missing flag is not a neutral omission -- it removes `/thinking` entirely.
     """
     out = OrderedDict(existing) if existing else OrderedDict()
     out["id"] = gw["id"]
+    # Creation only: an existing entry's value is deliberate either way.
+    if existing is None and seeds_reasoning(gw["id"]):
+        out["reasoning"] = True
     if gw.get("display_name"):
         out["name"] = gw["display_name"]
     if gw.get("context_window_tokens"):
