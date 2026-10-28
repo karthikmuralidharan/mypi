@@ -212,8 +212,12 @@ isolated worktree when the change is non-trivial (see `ce-worktree`).
   `pi --plan`), let the agent call `plannotator_submit_plan`, and iterate on
   the plan in the browser UI until the human **approves**. Approve-with-notes
   and deny-with-annotations both feed structured feedback back here.
-- **GATE 1**: do not leave this stage until the plan is human-approved, then
-  record it: `"$EL" gate-pass 1 --note "<what was approved>"`.
+- Run `"$EL" analyze` before asking for approval. It checks the spec
+  sections, that behaviour criteria and plan items are checkable, that
+  interface rows carry a consumer count, and that the plan matches the
+  live sub-issues. It **reports only** — it never edits the spec.
+- **GATE 1**: do not leave this stage until the plan is human-approved,
+  then record it: `"$EL" gate-pass 1 --note "<what was approved>"`.
 
 ### Stage 3a — graphify as the LLM wiki (as needed, keep it fresh)
 
@@ -389,11 +393,6 @@ loop done shipping, not a first-time run:
   more — it reads the merged state and lands on **Done** (no approval gate,
   but this call is what actually performs the transition; see "Automatic
   status sync").
-
-## Automation surface (what is code vs. judgment)
-
-What is enforced by code and what stays judgment:
-`references/operations.md`.
 
 ## Pitfalls
 

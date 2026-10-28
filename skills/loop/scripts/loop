@@ -9,6 +9,7 @@
 #   ci-watch   ...    -> ci-watch.sh   (tail CI until it settles)
 #   pr-check   ...    -> pr-check.sh   (rearming gate: unresolved review threads)
 #   ship-gate  ...    -> ship-gate.sh  (ci-watch + pr-check as one call/one exit code)
+#   analyze    ...    -> analyze.sh    (spec/plan/sub-issue consistency; reports only)
 #   replan     ...    -> replan.sh     (revise the spec after coding started)
 #   where            -> status.sh (run state vs. live gh/JIRA/git facts)
 #   config           print resolved config
@@ -112,6 +113,7 @@ case "$sub" in
     ci-watch)  exec "$HERE/ci-watch.sh" "$@";;
     pr-check)  exec "$HERE/pr-check.sh" "$@";;
     ship-gate) exec "$HERE/ship-gate.sh" "$@";;
+    analyze)   exec "$HERE/analyze.sh" "$@";;
     replan)    exec "$HERE/replan.sh" "$@";;
     where)     exec "$HERE/status.sh" "$@";;
     ""|-h|--help)

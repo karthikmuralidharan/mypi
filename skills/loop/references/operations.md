@@ -187,3 +187,34 @@ exits non-zero while a revision exists with no re-earned pass.
 from the GitHub edit history, not from the issue itself. An append-only
 `## Revision N` block, or storing deltas and merging them the way OpenSpec
 does, would keep the original intent visible in the body. Worth revisiting.
+
+## `loop analyze` — consistency, reported not fixed
+
+Reports; never edits. Spec Kit's `analyze` works the same way, so that a
+finding cannot be "resolved" by quietly rewriting intent. Reads the live
+issue body, so it also catches an issue that has drifted from the branch.
+
+| Check | Severity | Looks for |
+| --- | --- | --- |
+| `sections` | error | the four top-level sections |
+| `spec-sections` | error | the five technical-spec subsections |
+| `behaviours` | error/warn | `- [ ]` criteria; Given/When/Then shape |
+| `plan` | error | `- [ ]` work items |
+| `workflows` | error | a ```` ```mermaid ```` block |
+| `interfaces` | error/warn | 5 columns, and a non-empty consumer count |
+| `data-models` | error | every row marked new/modified/removed |
+| `folders` | warn | NEW/MOD/DEL markers in the tree |
+| `plan-subissues` | error/warn | plan items and open sub-issues agree |
+| `traceability` | warn | a `JIRA: <KEY>` marker |
+
+Exit 0 when there are no errors, 1 when there are, 2 when it cannot run.
+Warnings never fail the command. `--json` gives
+`{issue, errors, warnings, findings[]}` for an agent to consume.
+
+`plan-subissues` is the one that earns its keep: an open sub-issue missing
+from the plan is an **error**, because it means work is tracked that the
+approved plan does not describe. That is the drift replan exists to correct,
+and it is cheaper to catch here.
+
+If a finding means the contract itself is wrong, that is a replan, not an
+edit.
