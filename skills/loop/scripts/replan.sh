@@ -26,9 +26,9 @@
 # their history and comments), new items are added, dropped items are CLOSED
 # with the reason, never deleted.
 #
-# The superseded spec is archived as a collapsed comment on the issue before
-# the body is replaced, so every prior contract stays auditable in the issue
-# itself rather than only in GitHub's edit history.
+# The superseded spec is NOT copied into the issue. `apply` replaces the body,
+# and GitHub's own edit history on the (eventually closed) issue is the audit
+# trail. See references/operations.md for why that is deliberate.
 #
 # Usage:
 #   replan.sh start --evidence TEXT [--section NAME]...
@@ -134,12 +134,6 @@ cmd_apply() {
     [ -n "$issue" ] || die "no issue recorded in state — nothing to revise"
 
     log "applying revision to $issue"
-    # Archive BEFORE overwriting: once update-issue lands, the prior contract
-    # exists only in GitHub's edit history. The current revision number is
-    # the one being superseded, so pass it before the bump below.
-    "$SYNC" archive-spec --gh "$issue" \
-        --revision "$(state_read '.revision' 0)" \
-        --reason "$(state_read '.replan.evidence')" >/dev/null
     "$SYNC" update-issue --gh "$issue" --body-file "$body_file" >/dev/null
 
     # --- reconcile sub-issues against the revised plan ---------------------

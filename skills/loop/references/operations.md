@@ -181,12 +181,22 @@ was earned against a contract that no longer holds, so `apply` clears
 `lastShipGatePassCommit` and the gate must be re-earned. `replan status`
 exits non-zero while a revision exists with no re-earned pass.
 
-### Known limitation
+### Why the superseded spec is not copied into the issue
 
-`apply` **replaces** the issue body. The previous spec is recoverable only
-from the GitHub edit history, not from the issue itself. An append-only
-`## Revision N` block, or storing deltas and merging them the way OpenSpec
-does, would keep the original intent visible in the body. Worth revisiting.
+`apply` **replaces** the issue body, and that is deliberate. The prior spec
+stays in GitHub's edit history on the issue, and the issue is closed at the
+end of the loop, so the audit trail is already there and already immutable.
+Copying each superseded spec into the body or into a comment would duplicate
+that trail and make a long-lived issue harder to read, for no audit gain.
+
+This is a closed decision, not an open gap. An earlier revision of this skill
+shipped an `archive-spec` primitive that posted the old body as a collapsed
+comment; it was removed as redundant. Do not rebuild it without a concrete
+requirement the edit history cannot meet.
+
+One consequence to know: GitHub shows body edit history in the web UI, so a
+human can audit a revision. Nothing in `loop` reads it, so a future check that
+wants to diff a spec against its predecessor would need another source.
 
 ## `loop analyze` — consistency, reported not fixed
 
