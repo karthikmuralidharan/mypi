@@ -256,21 +256,39 @@ Only dispatch subagents for files listed in `graphify-out/.graphify_uncached.txt
 
 Load files from `graphify-out/.graphify_uncached.txt`. Split into chunks of 20-25 files each. Each image gets its own chunk (vision needs separate context). When splitting, group files from the same directory together so related artifacts land in the same chunk and cross-file relationships are more likely to be extracted.
 
-**Step B2 - Dispatch ALL subagents in a single message**
+**Step B2 - Dispatch all chunk extractions in ONE workflow call**
 
-Call the Agent tool multiple times IN THE SAME RESPONSE - one call per chunk. This is the only way they run in parallel. If you make one Agent call, wait, then make another, you are doing it sequentially and defeating the purpose.
+In pi, parallel fan-out is **scripted inside a single `subagent` call**, not N
+separate tool calls. Write one workflow block and launch every chunk from
+`runs.all`, which runs them concurrently and returns an ordered array.
 
-**IMPORTANT - subagent type:** Always use `subagent_type="general-purpose"`. Do NOT use `Explore` - it is read-only and cannot write chunk files to disk, which silently drops extraction results. General-purpose has Write and Bash access which the subagent needs.
+**Agent to use:** `delegate`. It has `bash`, `edit` and `write`, which the
+extraction needs in order to put chunk files on disk, and it is lightweight
+so N parallel copies stay affordable. Do **not** use a read-only agent such as
+`scout` or `reviewer` — they cannot write the chunk files and the extraction
+results are silently dropped.
 
-Concrete example for 3 chunks:
+```js workflow
+const chunks = [
+  { key: "chunk-1", agent: "delegate", task: "<prompt for files 1-20>" },
+  { key: "chunk-2", agent: "delegate", task: "<prompt for files 21-40>" },
+  { key: "chunk-3", agent: "delegate", task: "<prompt for files 41-60>" },
+];
+const results = await runs.all(chunks);
+return results.map((r, i) => `chunk ${i + 1}: ${r.output}`).join("\n");
 ```
-[Agent tool call 1: files 1-15, subagent_type="general-purpose"]
-[Agent tool call 2: files 16-30, subagent_type="general-purpose"]
-[Agent tool call 3: files 31-45, subagent_type="general-purpose"]
-```
-All three in one message. Not three separate messages.
 
-Each subagent receives this exact prompt (substitute FILE_LIST, CHUNK_NUM, TOTAL_CHUNKS, DEEP_MODE, and CHUNK_PATH).
+Then dispatch it with a single call:
+
+```text
+subagent(workflow: true, async: true)
+```
+
+One workflow call, every chunk concurrent. Making N separate `subagent` calls
+runs them sequentially and defeats the purpose.
+
+Each chunk's `task` is the prompt below (substitute FILE_LIST, CHUNK_NUM,
+TOTAL_CHUNKS, DEEP_MODE and CHUNK_PATH).
 
 CHUNK_PATH must be an **absolute** path — derive it before dispatching:
 ```bash
