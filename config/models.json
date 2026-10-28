@@ -349,6 +349,21 @@
           }
         },
         {
+          "id": "gpt-6.1-terra",
+          "name": "GPT-6.1 Terra",
+          "contextWindow": 922000,
+          "maxTokens": 128000,
+          "cost": {
+            "input": 1.0,
+            "output": 5.0,
+            "cacheRead": 0.05,
+            "cacheWrite": 1.25
+          },
+          "promptCache": {
+            "short": 300
+          }
+        },
+        {
           "id": "us.moonshotai.kimi-k3",
           "contextWindow": 1000000,
           "maxTokens": 131072,
@@ -500,6 +515,21 @@
             "output": 10.0,
             "cacheRead": 0.1,
             "cacheWrite": 2.5
+          },
+          "promptCache": {
+            "short": 300
+          }
+        },
+        {
+          "id": "gpt-6.1-terra",
+          "name": "GPT-6.1 Terra",
+          "contextWindow": 922000,
+          "maxTokens": 128000,
+          "cost": {
+            "input": 1.0,
+            "output": 5.0,
+            "cacheRead": 0.05,
+            "cacheWrite": 1.25
           },
           "promptCache": {
             "short": 300
