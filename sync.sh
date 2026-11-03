@@ -44,6 +44,10 @@ mkdir -p "$REPO/config/extensions/pi-rtk-optimizer"
 [[ -f "$A/extensions/pi-rtk-optimizer/config.json" ]] &&
   cp "$A/extensions/pi-rtk-optimizer/config.json" "$REPO/config/extensions/pi-rtk-optimizer/config.json" &&
   echo "    config/extensions/pi-rtk-optimizer/config.json"
+mkdir -p "$REPO/config/extensions/subagent"
+[[ -f "$A/extensions/subagent/config.json" ]] &&
+  cp "$A/extensions/subagent/config.json" "$REPO/config/extensions/subagent/config.json" &&
+  echo "    config/extensions/subagent/config.json"
 
 echo "==> my extensions"
 # Anything in ~/.pi/agent/extensions/ that is NOT tool-managed and NOT a

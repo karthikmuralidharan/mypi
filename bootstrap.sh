@@ -68,6 +68,9 @@ echo "==> extension config"
 [[ -f "$REPO/config/extensions/pi-rtk-optimizer/config.json" ]] &&
   install_file "$REPO/config/extensions/pi-rtk-optimizer/config.json" \
     "$A/extensions/pi-rtk-optimizer/config.json"
+[[ -f "$REPO/config/extensions/subagent/config.json" ]] &&
+  install_file "$REPO/config/extensions/subagent/config.json" \
+    "$A/extensions/subagent/config.json"
 
 echo "==> my extensions"
 shopt -s nullglob
