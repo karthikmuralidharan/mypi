@@ -37,7 +37,6 @@ trust.json
 
 # --- tool-managed files (reinstalling the tool rewrites them) ---
 extensions/herdr-agent-state.ts
-extensions/mtplx-request-policy.ts
 
 # --- os noise ---
 .DS_Store
