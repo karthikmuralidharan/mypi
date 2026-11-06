@@ -2,9 +2,8 @@
 """Regenerate the aperture provider model lists in config/models.json.
 
 The gateway publishes its catalogue at GET /v1/models with context windows,
-max output tokens and per-token pricing. Hand-maintaining that drifted: an
-audit on 2026-10-14 found 18 models the gateway served that models.json did
-not list, including a cheaper Opus 5.5 and a 1M-context Haiku 5.5.
+max output tokens and per-token pricing. Sync the Anthropic Messages and
+OpenAI Responses providers from their advertised endpoints.
 
 Design notes, learned the hard way:
 
@@ -23,7 +22,8 @@ Design notes, learned the hard way:
   eligible for cache warming (docs/settings.md, `cacheWarming`).
 * Models are assigned to a provider by their advertised `supported_endpoints`,
   not by guessing from the id. A model declared under the wrong api registers
-  fine and then fails at request time.
+  fine and then fails at request time. A catalogue entry does not guarantee
+  that the current user can access the model.
 
 Usage:
   scripts/sync-aperture-models.py            # update config/models.json
@@ -47,16 +47,11 @@ MODELS_JSON = REPO / "config" / "models.json"
 LIVE = Path.home() / ".pi/agent/models.json"
 CA = Path.home() / ".config/certs/cato-root.pem"
 
-# provider name -> predicate over the gateway's supported_endpoints
+# Provider name -> gateway endpoint. These are the providers in models.json.
 ROUTES = {
-    "aperture-bedrock": lambda eps: any(e.startswith("/bedrock/") for e in eps),
-    "aperture-completions": lambda eps: "/v1/chat/completions" in eps,
-    "aperture-responses": lambda eps: "/v1/responses" in eps,
+    "anthropic": "/v1/messages",
+    "openai": "/v1/responses",
 }
-# Served by the gateway but with no provider block to put them in. Reported,
-# never written: they speak Anthropic Messages, so they need their own
-# provider with api "anthropic-messages".
-UNROUTED = "/v1/messages"
 
 
 def per_million(v):
@@ -127,9 +122,9 @@ def is_complete(gw):
 # no capability flag for it. Without `reasoning: true` pi treats the model as
 # non-thinking and `/thinking` offers no levels at all, so a newly discovered
 # Claude model silently loses level switching. Seed it for these three families
-# only -- `claude-fable-*` is not a family whose thinking support is verified,
-# and the gpt-* entries genuinely do not take a level here.
-CLAUDE_REASONING_RE = re.compile(r"anthropic\.claude-(sonnet|opus|haiku)-")
+# only -- `claude-fable-*` is not a family whose thinking support is verified.
+# GPT capability flags are left unchanged.
+CLAUDE_REASONING_RE = re.compile(r"^(?:us\.anthropic\.)?claude-(sonnet|opus|haiku)-")
 
 
 def seeds_reasoning(model_id):
@@ -182,6 +177,18 @@ def build_entry(gw, existing):
     return out
 
 
+def previous_entry(mid, have):
+    """Preserve settings when an old Bedrock ID maps unambiguously to an alias."""
+    if mid in have:
+        return have[mid]
+    matches = [entry for old, entry in have.items()
+               if old.startswith("us.anthropic.")
+               and (old[len("us.anthropic."):] == mid
+                    or re.fullmatch(re.escape(mid) + r"(?:-\d{8})?-v\d+(?::\d+)?",
+                                    old[len("us.anthropic."):]))]
+    return matches[0] if len(matches) == 1 else None
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--check", action="store_true",
@@ -198,9 +205,9 @@ def main():
         return 2
 
     providers = doc.get("providers") or {}
-    src = providers.get("aperture-completions")
+    src = providers.get("openai")
     if not src:
-        print("no aperture-completions provider to read the catalogue from",
+        print("no openai provider to read the Aperture catalogue from",
               file=sys.stderr)
         return 2
 
@@ -210,15 +217,15 @@ def main():
         by_id.setdefault(m["id"], m)   # gateway lists some ids twice
     print(f"gateway: {len(catalogue)} records, {len(by_id)} distinct ids")
 
-    added, updated, unrouted, incomplete = {}, {}, [], []
-    for name, matches in ROUTES.items():
+    added, updated, removed, incomplete, unmatched = {}, {}, {}, [], []
+    for name, endpoint in ROUTES.items():
         prov = providers.get(name)
         if prov is None:
             continue
         have = OrderedDict((m["id"], m) for m in prov.get("models") or [])
         rebuilt, new_ids, changed = [], [], []
         for mid, gw in sorted(by_id.items()):
-            if not matches(gw.get("supported_endpoints") or []):
+            if endpoint not in (gw.get("supported_endpoints") or []):
                 continue
             # Never introduce a model the gateway has not described. An entry
             # already in models.json is kept as-is, since merging only
@@ -226,7 +233,7 @@ def main():
             if mid not in have and not is_complete(gw):
                 incomplete.append(f"{name}/{mid}")
                 continue
-            entry = build_entry(gw, have.get(mid))
+            entry = build_entry(gw, previous_entry(mid, have))
             if mid not in have:
                 new_ids.append(mid)
             elif entry != have[mid]:
@@ -241,17 +248,16 @@ def main():
             print(f"  {name}: gateway matched 0 models — keeping existing "
                   f"{len(have)} rather than emptying the provider",
                   file=sys.stderr)
+            unmatched.append(name)
             continue
+        missing = sorted(set(have) - {entry["id"] for entry in rebuilt})
+        if missing:
+            removed[name] = missing
         prov["models"] = rebuilt
         if new_ids:
             added[name] = new_ids
         if changed:
             updated[name] = changed
-
-    for mid, gw in sorted(by_id.items()):
-        eps = gw.get("supported_endpoints") or []
-        if UNROUTED in eps and not any(f(eps) for f in ROUTES.values()):
-            unrouted.append(mid)
 
     print("\n=== added ===")
     for name, ids in added.items() or ():
@@ -267,12 +273,12 @@ def main():
     if not updated:
         print("  (none)")
 
-    if unrouted:
-        print(f"\n=== served but not configurable here ({len(unrouted)}) ===")
-        print("  These speak Anthropic Messages and need their own provider")
-        print('  block with api "anthropic-messages":')
-        for i in unrouted:
-            print(f"    {i}")
+    print("\n=== removed (not advertised for this endpoint) ===")
+    for name, ids in removed.items():
+        for mid in ids:
+            print(f"  {name}/{mid}")
+    if not removed:
+        print("  (none)")
 
     if incomplete:
         print(f"\n=== skipped, gateway metadata incomplete ({len(incomplete)}) ===")
@@ -282,12 +288,19 @@ def main():
             print(f"    {i}")
 
     if a.check:
-        drift = bool(added or updated)
+        drift = bool(added or updated or removed or unmatched)
         print(f"\n--check: {'DRIFT' if drift else 'up to date'}")
         return 1 if drift else 0
 
-    if not (added or updated):
+    if unmatched:
+        print("\nrefusing to write: a provider matched no models", file=sys.stderr)
+        return 2
+
+    if not (added or updated or removed):
         print("\nnothing to write")
+        if a.deploy:
+            shutil.copy2(MODELS_JSON, LIVE)
+            print(f"deployed to {LIVE}")
         return 0
 
     text = json.dumps(doc, indent=2) + "\n"

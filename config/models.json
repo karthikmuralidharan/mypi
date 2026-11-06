@@ -1,20 +1,20 @@
 {
   "providers": {
-    "aperture-bedrock": {
-      "baseUrl": "http://ai.tail427a30.ts.net/bedrock",
-      "api": "bedrock-converse-stream",
+    "anthropic": {
+      "baseUrl": "http://ai.tail427a30.ts.net",
+      "api": "anthropic-messages",
       "apiKey": "not-required",
       "models": [
         {
-          "id": "us.anthropic.claude-fable-5",
-          "name": "Claude Fable 5 (US)",
+          "id": "claude-fable-5-1",
+          "name": "Claude Fable 5.1",
           "contextWindow": 1000000,
           "maxTokens": 128000,
           "cost": {
-            "input": 11.0,
-            "output": 55.0,
-            "cacheRead": 1.1,
-            "cacheWrite": 13.75
+            "input": 10.0,
+            "output": 50.0,
+            "cacheRead": 0.25,
+            "cacheWrite": 12.5
           },
           "promptCache": {
             "short": 300,
@@ -22,23 +22,7 @@
           }
         },
         {
-          "id": "us.anthropic.claude-fable-5-1",
-          "name": "Claude Fable 5.1 (US)",
-          "contextWindow": 1000000,
-          "maxTokens": 128000,
-          "cost": {
-            "input": 11.0,
-            "output": 55.0,
-            "cacheRead": 0.275,
-            "cacheWrite": 13.75
-          },
-          "promptCache": {
-            "short": 300,
-            "long": 3600
-          }
-        },
-        {
-          "id": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+          "id": "claude-haiku-4-5",
           "reasoning": true,
           "input": [
             "text",
@@ -47,265 +31,22 @@
           "contextWindow": 200000,
           "maxTokens": 64000,
           "cost": {
-            "input": 1.1,
-            "output": 5.5,
-            "cacheRead": 0.11,
-            "cacheWrite": 1.375
+            "input": 1.0,
+            "output": 5.0,
+            "cacheRead": 0.1,
+            "cacheWrite": 1.25
           },
-          "name": "Claude Haiku 4.5 (US)",
+          "name": "Claude Haiku 4.5",
           "promptCache": {
             "short": 300,
             "long": 3600
           }
         },
         {
-          "id": "us.anthropic.claude-haiku-5-5",
+          "id": "claude-haiku-5-5",
           "reasoning": true,
-          "name": "Claude Haiku 5.5 (US)",
+          "name": "Claude Haiku 5.5",
           "contextWindow": 1000000,
-          "maxTokens": 128000,
-          "cost": {
-            "input": 0.11,
-            "output": 0.55,
-            "cacheRead": 0.011,
-            "cacheWrite": 0.1375
-          },
-          "promptCache": {
-            "short": 300,
-            "long": 3600
-          }
-        },
-        {
-          "id": "us.anthropic.claude-opus-4-6-v1",
-          "reasoning": true,
-          "name": "Claude Opus 4.6 (US)",
-          "contextWindow": 1000000,
-          "maxTokens": 128000,
-          "cost": {
-            "input": 5.5,
-            "output": 27.5,
-            "cacheRead": 0.55,
-            "cacheWrite": 6.875
-          },
-          "promptCache": {
-            "short": 300,
-            "long": 3600
-          }
-        },
-        {
-          "id": "us.anthropic.claude-opus-4-8",
-          "reasoning": true,
-          "input": [
-            "text",
-            "image"
-          ],
-          "contextWindow": 1000000,
-          "maxTokens": 128000,
-          "cost": {
-            "input": 5.5,
-            "output": 27.5,
-            "cacheRead": 0.55,
-            "cacheWrite": 6.875
-          },
-          "name": "Claude Opus 4.8 (US)",
-          "promptCache": {
-            "short": 300,
-            "long": 3600
-          }
-        },
-        {
-          "id": "us.anthropic.claude-opus-5",
-          "reasoning": true,
-          "input": [
-            "text",
-            "image"
-          ],
-          "contextWindow": 1000000,
-          "maxTokens": 128000,
-          "cost": {
-            "input": 5.5,
-            "output": 27.5,
-            "cacheRead": 0.55,
-            "cacheWrite": 6.875
-          },
-          "name": "Claude Opus 5 (US)",
-          "promptCache": {
-            "short": 300,
-            "long": 3600
-          }
-        },
-        {
-          "id": "us.anthropic.claude-opus-5-5",
-          "reasoning": true,
-          "name": "Claude Opus 5.5 (US)",
-          "contextWindow": 1000000,
-          "maxTokens": 128000,
-          "cost": {
-            "input": 4.4,
-            "output": 22.0,
-            "cacheRead": 0.22,
-            "cacheWrite": 5.5
-          },
-          "promptCache": {
-            "short": 300,
-            "long": 3600
-          }
-        },
-        {
-          "id": "us.anthropic.claude-sonnet-4-6",
-          "reasoning": true,
-          "name": "Claude Sonnet 4.6 (US)",
-          "contextWindow": 1000000,
-          "maxTokens": 64000,
-          "cost": {
-            "input": 3.3,
-            "output": 16.5,
-            "cacheRead": 0.33,
-            "cacheWrite": 4.125
-          },
-          "promptCache": {
-            "short": 300,
-            "long": 3600
-          }
-        },
-        {
-          "id": "us.anthropic.claude-sonnet-5",
-          "reasoning": true,
-          "input": [
-            "text",
-            "image"
-          ],
-          "contextWindow": 1000000,
-          "maxTokens": 128000,
-          "cost": {
-            "input": 2.2,
-            "output": 11.0,
-            "cacheRead": 0.22,
-            "cacheWrite": 2.75
-          },
-          "name": "Claude Sonnet 5 (US)",
-          "promptCache": {
-            "short": 300,
-            "long": 3600
-          }
-        },
-        {
-          "id": "us.anthropic.claude-sonnet-5-5",
-          "reasoning": true,
-          "name": "Claude Sonnet 5.5 (US)",
-          "contextWindow": 1000000,
-          "maxTokens": 128000,
-          "cost": {
-            "input": 2.2,
-            "output": 11.0,
-            "cacheRead": 0.11,
-            "cacheWrite": 2.75
-          },
-          "promptCache": {
-            "short": 300,
-            "long": 3600
-          }
-        }
-      ]
-    },
-    "aperture-completions": {
-      "baseUrl": "http://ai.tail427a30.ts.net/v1",
-      "api": "openai-completions",
-      "apiKey": "not-required",
-      "models": [
-        {
-          "id": "gpt-5.4",
-          "contextWindow": 1050000,
-          "maxTokens": 128000,
-          "cost": {
-            "input": 2.5,
-            "output": 15.0,
-            "cacheRead": 0.25,
-            "cacheWrite": 2.5
-          },
-          "name": "GPT 5.4",
-          "promptCache": {
-            "short": 300
-          }
-        },
-        {
-          "id": "gpt-5.5",
-          "contextWindow": 1050000,
-          "maxTokens": 128000,
-          "cost": {
-            "input": 5.0,
-            "output": 30.0,
-            "cacheRead": 0.5,
-            "cacheWrite": 5.0
-          },
-          "name": "GPT 5.5",
-          "promptCache": {
-            "short": 300
-          }
-        },
-        {
-          "id": "gpt-5.6-luna",
-          "contextWindow": 922000,
-          "maxTokens": 128000,
-          "cost": {
-            "input": 0.2,
-            "output": 1.2,
-            "cacheRead": 0.02,
-            "cacheWrite": 0.25
-          },
-          "name": "GPT 5.6 Luna",
-          "promptCache": {
-            "short": 300
-          }
-        },
-        {
-          "id": "gpt-5.6-sol",
-          "contextWindow": 922000,
-          "maxTokens": 128000,
-          "cost": {
-            "input": 4.0,
-            "output": 20.0,
-            "cacheRead": 0.4,
-            "cacheWrite": 5.0
-          },
-          "name": "GPT 5.6 Sol",
-          "promptCache": {
-            "short": 300
-          }
-        },
-        {
-          "id": "gpt-5.6-terra",
-          "contextWindow": 922000,
-          "maxTokens": 128000,
-          "cost": {
-            "input": 2.0,
-            "output": 12.0,
-            "cacheRead": 0.2,
-            "cacheWrite": 2.5
-          },
-          "name": "GPT 5.6 Terra",
-          "promptCache": {
-            "short": 300
-          }
-        },
-        {
-          "id": "gpt-6-astra",
-          "contextWindow": 922000,
-          "maxTokens": 128000,
-          "cost": {
-            "input": 10.0,
-            "output": 50.0,
-            "cacheRead": 1.0,
-            "cacheWrite": 12.5
-          },
-          "name": "GPT-6 Astra",
-          "promptCache": {
-            "short": 300
-          }
-        },
-        {
-          "id": "gpt-6-luna",
-          "contextWindow": 922000,
           "maxTokens": 128000,
           "cost": {
             "input": 0.1,
@@ -313,14 +54,95 @@
             "cacheRead": 0.01,
             "cacheWrite": 0.125
           },
-          "name": "GPT-6 Luna",
           "promptCache": {
-            "short": 300
+            "short": 300,
+            "long": 3600
           }
         },
         {
-          "id": "gpt-6-sol",
-          "contextWindow": 922000,
+          "id": "claude-opus-4-8",
+          "reasoning": true,
+          "input": [
+            "text",
+            "image"
+          ],
+          "contextWindow": 1000000,
+          "maxTokens": 128000,
+          "cost": {
+            "input": 5.0,
+            "output": 25.0,
+            "cacheRead": 0.5,
+            "cacheWrite": 6.25
+          },
+          "name": "Claude Opus 4.8",
+          "promptCache": {
+            "short": 300,
+            "long": 3600
+          }
+        },
+        {
+          "id": "claude-opus-5",
+          "reasoning": true,
+          "input": [
+            "text",
+            "image"
+          ],
+          "contextWindow": 1000000,
+          "maxTokens": 128000,
+          "cost": {
+            "input": 5.0,
+            "output": 25.0,
+            "cacheRead": 0.5,
+            "cacheWrite": 6.25
+          },
+          "name": "Claude Opus 5",
+          "promptCache": {
+            "short": 300,
+            "long": 3600
+          }
+        },
+        {
+          "id": "claude-opus-5-5",
+          "reasoning": true,
+          "name": "Claude Opus 5.5",
+          "contextWindow": 1000000,
+          "maxTokens": 128000,
+          "cost": {
+            "input": 4.0,
+            "output": 20.0,
+            "cacheRead": 0.2,
+            "cacheWrite": 5.0
+          },
+          "promptCache": {
+            "short": 300,
+            "long": 3600
+          }
+        },
+        {
+          "id": "claude-opus-5-5-fast",
+          "reasoning": true,
+          "name": "Claude Opus 5.5",
+          "contextWindow": 1000000,
+          "maxTokens": 128000,
+          "cost": {
+            "input": 8.0,
+            "output": 40.0,
+            "cacheRead": 0.4,
+            "cacheWrite": 10.0
+          },
+          "promptCache": {
+            "short": 300,
+            "long": 3600
+          }
+        },
+        {
+          "id": "claude-sonnet-5",
+          "reasoning": true,
+          "input": [
+            "text",
+            "image"
+          ],
+          "contextWindow": 1000000,
           "maxTokens": 128000,
           "cost": {
             "input": 2.0,
@@ -328,15 +150,17 @@
             "cacheRead": 0.2,
             "cacheWrite": 2.5
           },
-          "name": "GPT-6 Sol",
+          "name": "Claude Sonnet 5",
           "promptCache": {
-            "short": 300
+            "short": 300,
+            "long": 3600
           }
         },
         {
-          "id": "gpt-6.1-sol",
-          "name": "GPT-6.1 Sol",
-          "contextWindow": 922000,
+          "id": "claude-sonnet-5-5",
+          "reasoning": true,
+          "name": "Claude Sonnet 5.5",
+          "contextWindow": 1000000,
           "maxTokens": 128000,
           "cost": {
             "input": 2.0,
@@ -345,42 +169,13 @@
             "cacheWrite": 2.5
           },
           "promptCache": {
-            "short": 300
-          }
-        },
-        {
-          "id": "gpt-6.1-terra",
-          "name": "GPT-6.1 Terra",
-          "contextWindow": 922000,
-          "maxTokens": 128000,
-          "cost": {
-            "input": 1.0,
-            "output": 5.0,
-            "cacheRead": 0.05,
-            "cacheWrite": 1.25
-          },
-          "promptCache": {
-            "short": 300
-          }
-        },
-        {
-          "id": "us.moonshotai.kimi-k3",
-          "contextWindow": 1000000,
-          "maxTokens": 131072,
-          "cost": {
-            "input": 3.3,
-            "output": 16.5,
-            "cacheRead": 0.33,
-            "cacheWrite": 4.125
-          },
-          "name": "Kimi K3 (US)",
-          "promptCache": {
-            "short": 300
+            "short": 300,
+            "long": 3600
           }
         }
       ]
     },
-    "aperture-responses": {
+    "openai": {
       "baseUrl": "http://ai.tail427a30.ts.net/v1",
       "api": "openai-responses",
       "apiKey": "not-required",
@@ -523,6 +318,12 @@
         {
           "id": "gpt-6.1-terra",
           "name": "GPT-6.1 Terra",
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "minimal": null,
+            "xhigh": "xhigh",
+            "max": "max"
+          },
           "contextWindow": 922000,
           "maxTokens": 128000,
           "cost": {
@@ -534,43 +335,6 @@
           "promptCache": {
             "short": 300
           }
-        }
-      ]
-    },
-    "mtplx": {
-      "baseUrl": "http://127.0.0.1:8000/v1",
-      "api": "openai-completions",
-      "apiKey": "mtplx-local",
-      "authHeader": true,
-      "headers": {
-        "x-mtplx-client": "pi"
-      },
-      "compat": {
-        "supportsDeveloperRole": false,
-        "supportsReasoningEffort": true,
-        "thinkingFormat": "qwen",
-        "maxTokensField": "max_tokens"
-      },
-      "models": [
-        {
-          "id": "mtplx-qwen38-27b-optimized-speed",
-          "name": "MTPLX mtplx-qwen38-27b-optimized-speed",
-          "reasoning": true,
-          "thinkingLevelMap": {
-            "minimal": null,
-            "xhigh": "xhigh"
-          },
-          "input": [
-            "text"
-          ],
-          "contextWindow": 262144,
-          "cost": {
-            "input": 0,
-            "output": 0,
-            "cacheRead": 0,
-            "cacheWrite": 0
-          },
-          "maxTokens": 262144
         }
       ]
     }

@@ -1,7 +1,7 @@
 {
-  "lastChangelogVersion": "1.1.0",
-  "defaultProvider": "aperture-bedrock",
-  "defaultModel": "us.anthropic.claude-sonnet-5",
+  "lastChangelogVersion": "1.4.0",
+  "defaultProvider": "openai",
+  "defaultModel": "gpt-6.1-terra",
   "packages": [
     "npm:pi-rtk-optimizer",
     "npm:@plannotator/pi-extension",
@@ -21,7 +21,9 @@
     "npm:context-mode",
     "npm:pi-subagents",
     "npm:@mnemosyne-oss/pi-mnemosyne",
-    "git:github.com/EveryInc/compound-engineering-plugin@compound-engineering-v3.30.4"
+    "git:github.com/EveryInc/compound-engineering-plugin@compound-engineering-v3.30.4",
+    "npm:@tintinweb/pi-subagents",
+    "git:github.com/google/elephant-goldfish-model@244292ca394adbcb42ee056297fa6940371ff8bf"
   ],
   "enableInstallTelemetry": false,
   "defaultThinkingLevel": "medium",
@@ -36,34 +38,23 @@
   ],
   "hideThinkingBlock": true,
   "enabledModels": [
-    "aperture-completions/gpt-5.4",
-    "aperture-completions/gpt-5.5",
-    "aperture-completions/gpt-6-sol",
-    "aperture-completions/gpt-5.6-sol",
-    "aperture-completions/gpt-6-astra",
-    "aperture-completions/gpt-6-luna",
-    "aperture-completions/gpt-5.6-luna",
-    "aperture-completions/gpt-5.6-terra",
-    "aperture-completions/us.moonshotai.kimi-k3",
-    "aperture-bedrock/us.anthropic.claude-opus-5",
-    "aperture-bedrock/us.anthropic.claude-opus-4-8",
-    "aperture-bedrock/us.anthropic.claude-sonnet-5",
-    "aperture-bedrock/us.anthropic.claude-haiku-4-5-20251001-v1:0",
-    "aperture-responses/gpt-5.4",
-    "aperture-responses/gpt-5.5",
-    "aperture-responses/gpt-6-sol",
-    "aperture-responses/gpt-5.6-sol",
-    "aperture-responses/gpt-6-astra",
-    "aperture-responses/gpt-6-luna",
-    "aperture-responses/gpt-5.6-luna",
-    "aperture-responses/gpt-5.6-terra"
+    "openai/gpt-5.4",
+    "openai/gpt-5.5",
+    "openai/gpt-6-sol",
+    "openai/gpt-5.6-sol",
+    "openai/gpt-6-astra",
+    "openai/gpt-6-luna",
+    "openai/gpt-5.6-luna",
+    "openai/gpt-5.6-terra",
+    "openai/gpt-6.1-terra",
+    "anthropic/claude-opus-5",
+    "anthropic/claude-opus-4-8",
+    "anthropic/claude-sonnet-5",
+    "anthropic/claude-haiku-4-5"
   ],
   "tuiMode": "fullscreen",
   "defaultTools": [
     "+codemode"
-  ],
-  "extensions": [
-    "-extensions/mtplx-request-policy.ts"
   ],
   "cacheWarming": "off",
   "showCacheMissNotices": true
