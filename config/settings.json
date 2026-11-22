@@ -1,5 +1,5 @@
 {
-  "lastChangelogVersion": "1.4.0",
+  "lastChangelogVersion": "1.6.0",
   "defaultProvider": "openai",
   "defaultModel": "gpt-6.1-terra",
   "packages": [
@@ -21,14 +21,20 @@
     "npm:context-mode",
     "npm:pi-subagents",
     "npm:@mnemosyne-oss/pi-mnemosyne",
-    "git:github.com/EveryInc/compound-engineering-plugin@compound-engineering-v3.30.4",
-    "npm:@tintinweb/pi-subagents",
+    {
+      "source": "git:github.com/EveryInc/compound-engineering-plugin@compound-engineering-v3.30.4",
+      "extensions": [],
+      "skills": [],
+      "prompts": [],
+      "themes": []
+    },
     "git:github.com/google/elephant-goldfish-model@244292ca394adbcb42ee056297fa6940371ff8bf"
   ],
   "enableInstallTelemetry": false,
   "defaultThinkingLevel": "medium",
   "theme": "dark",
   "skills": [
+    "-skills/ce-rigor/SKILL.md",
     "-skills/nri-us-tax-filing/SKILL.md",
     "+skills/migrating-to-chainguard/SKILL.md",
     "-skills/redash-clickhouse-queries/SKILL.md",
@@ -57,5 +63,13 @@
     "+codemode"
   ],
   "cacheWarming": "off",
-  "showCacheMissNotices": true
+  "showCacheMissNotices": true,
+  "extensionChangelogVersions": {
+    "{\"source\":\"npm:pi-rtk-optimizer\",\"scope\":\"user\"}": "0.9.0",
+    "{\"source\":\"npm:pi-lens\",\"scope\":\"user\"}": "4.5.1",
+    "{\"source\":\"npm:pi-autoresearch\",\"scope\":\"user\"}": "1.9.0",
+    "{\"source\":\"npm:@juicesharp/rpiv-voice\",\"scope\":\"user\"}": "2.15.0",
+    "{\"source\":\"npm:pi-subagents\",\"scope\":\"user\"}": "0.89.2",
+    "{\"source\":\"git:github.com/EveryInc/compound-engineering-plugin@compound-engineering-v3.30.4\",\"scope\":\"user\"}": "3.30.4"
+  }
 }

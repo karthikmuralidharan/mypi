@@ -1,43 +1,58 @@
 #!/usr/bin/env bash
-# ship-gate.sh — the Stage 9 ship gate as ONE deterministic call instead of
-# two. Composes ci-watch.sh + pr-check.sh, always runs both (so a CI failure
-# doesn't hide an unrelated review problem or vice versa), and reduces the
-# whole "is it ready to merge" check to a single tool call/exit code instead
-# of the caller having to sequence two calls and remember to check both.
-#
-# Usage: ship-gate.sh [branch]
-# Exit:  0 only if CI is green AND the PR is review-clear in this one pass.
-#        Non-zero otherwise — stdout says which side(s) failed and why
-#        (ci-watch's failing-job tail, pr-check's outstanding-thread summary).
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib/common.sh
 source "$HERE/lib/common.sh"
+# shellcheck source=lib/readiness.sh
+source "$HERE/lib/readiness.sh"
+require_config
 
-branch="${1:-$(git rev-parse --abbrev-ref HEAD)}"
-
-ci_rc=0
-"$HERE/ci-watch.sh" "$branch" || ci_rc=$?
-
-pr_rc=0
-"$HERE/pr-check.sh" "$branch" || pr_rc=$?
-
-echo "===== ship gate summary (branch: $branch) ====="
-if [ "$ci_rc" -eq 0 ] && [ "$pr_rc" -eq 0 ]; then
-    log "ship gate CLEAR — CI green and review-clear in the same pass"
-    # Best-effort: record the commit this passed against, so `loop where`
-    # can later tell "pushed since the last clear ship gate" from "still on
-    # the commit that passed" without the agent remembering across turns.
-    # Soft-fails (never blocks a clear ship gate) when .loop/ was never set
-    # up — ship-gate.sh works standalone without require_config, and this
-    # must not take that property away.
-    if [ -n "${LOOP_DIR:-}" ]; then
-        sha="$(git rev-parse "$branch" 2>/dev/null || true)"
-        [ -n "$sha" ] && state_set lastShipGatePassCommit "$sha" "$branch" 2>/dev/null || true
-    fi
-    exit 0
+no_ci=false
+required_checks='[]'
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --no-ci)
+            no_ci=true
+            shift
+            ;;
+        --required-check)
+            required_checks="$(jq -c --arg name "${2:?--required-check needs a name}" '. + [$name]' <<<"$required_checks")"
+            shift 2
+            ;;
+        *) die "usage: loop ship-gate [--required-check NAME ... | --no-ci]" ;;
+    esac
+done
+if [ "$no_ci" = true ]; then
+    [ "$required_checks" = '[]' ] || die "use --no-ci or --required-check"
+else
+    [ "$required_checks" != '[]' ] || die "specify the required CI check names, or use --no-ci for a project without CI"
 fi
-[ "$ci_rc" -ne 0 ] && warn "CI: FAIL (see ci-watch output above)"
-[ "$pr_rc" -ne 0 ] && warn "REVIEW: FAIL (see pr-check output above)"
-warn "ship gate NOT clear — fix, push, and re-run ship-gate from the top"
-exit 1
+
+repo="$(gh_repo)"
+branch="$(git branch --show-current)"
+[ -n "$branch" ] || die "check out the named PR branch"
+run="$(run_identity "$branch")"
+ticket="$(require_jira_ticket "$branch")"
+binding="$(require_pr_binding "$branch" "$run")"
+jira_branch_matches "$branch" "$ticket" || die "branch $branch must start with $ticket"
+pr="$(jq -er '.number' <<<"$binding")"
+pr_data="$(pr_snapshot "$repo" "$pr")"
+head="$(jq -er '.headRefOid' <<<"$pr_data")"
+pr_matches_run "$binding" "$branch" "$ticket" "$head" "$pr_data" ||
+    die "PR #$pr does not match the recorded PR identity and issue scope"
+[ "$(git rev-parse HEAD)" = "$head" ] || die "local HEAD differs from PR #$pr head $head"
+evidence="$(evidence_identity "$branch" "$head" "$run")"
+
+if [ "$no_ci" = false ]; then
+    gh pr checks "$pr" --repo "$repo" --watch --interval 10 ||
+        die "CI did not pass for PR #$pr"
+fi
+policy="$(jq -nc --argjson binding "$binding" --arg head "$head" --arg run "$run" --arg evidence "$evidence" \
+    --argjson noCI "$no_ci" --argjson requiredChecks "$required_checks" \
+    '{binding:$binding,head:$head,run:$run,evidence:$evidence,noCI:$noCI,requiredChecks:$requiredChecks}')"
+pr_ready_now "$branch" "$ticket" "$binding" "$policy" "$pr_data" ||
+    die "ship gate is pending for PR #$pr at $head; check live CI, review, and the PR head"
+[ "$(run_identity "$branch")" = "$run" ] || die "the approved run changed while checking the PR"
+[ "$(require_pr_binding "$branch" "$run")" = "$binding" ] || die "the PR binding changed while checking the PR"
+state_set_json shipPass "$policy" "$branch"
+log "ship gate clear for PR #$pr at $head"

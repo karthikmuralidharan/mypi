@@ -1,49 +1,47 @@
 # Technical spec structure
 
-Read this at Stage 2, before writing the spec.
+Read this before writing the technical spec.
 
-A spec made only of prose and a sequence diagram cannot be refined. Reviewers
-can argue with it but not correct it, because nothing in it is a concrete
-delta. These four sections make the design reviewable: each one states what
-exists now, what it becomes, and what that breaks.
-
-Order the spec as: Architecture decision, Data models, Interfaces, Folder
-structure, Workflows.
+Use five sections in order. Write the architecture decision, data models,
+interfaces, folder structure, and workflows. Show reviewers what exists today,
+what will change, and who needs to act on the change.
 
 ## 1. Architecture decision
 
-The decision is **what seam you add**, not which named pattern you adopt. A
-pattern is only the shape a seam takes.
-
-Your recorded convention is **additive integration**: extend through clean
-seams — an interface, an injected function, a strategy or a decorator — without
-modifying existing call sites. State how this change does that.
+Name where the new behavior connects to the existing system. Explain how the
+parts combine and why that boundary fits the repository.
 
 | | |
 | --- | --- |
 | Seam added | the interface, parameter or boundary introduced |
 | Composes by | wrap, substitute, sequence or inject |
 | Call sites touched | how many existing ones change, and why |
+| Invariant and owner | what must always be true, and which component owns it |
+| Input validation | which boundary validates external data before it enters the model |
 | Rejected | what else fitted, and the reason it lost |
 | Fits because | the existing convention it matches, cited |
 | Costs | what this makes harder later |
 
-"Call sites touched: 0" is the goal, not a boast. If the number is not zero,
-say what forced it — a signature change, a widened return, a new required
-argument. That is the real cost of the design.
+### Design principles
 
-Ground the "fits because" row in the codebase, not in taste. Use
-`graphify query "<question>"` for dependency facts and `lsp_navigation`
-references for real call sites. A claim that the repo "already does it this
-way" is checkable, and should be checked.
+- **Favor additive integration.** Keep existing callers working through a
+  stable boundary. If a caller must change, name it and explain why.
+- **Compose through a stable contract.** Keep the same input and output shape
+  when units wrap or replace each other. A second variant can use the same
+  boundary without edits to the first variant or its callers.
+- **Isolate behavior.** Keep shared state and I/O out of the unit where
+  practical. Make independent instances and local tests possible.
+- **Name the invariant and its owner.** Give each rule one owner. Show how
+  the model, schema, or boundary check enforces it. Validate input where it
+  enters the system.
+- **Make order explicit.** If the outcome depends on order, state the order and
+  the reason for it. Show that order in the workflow.
+- **Measure the impact.** Cite repository code or reference searches for the
+  caller count. Identify unverified external consumers before approval.
+- **Verify the public behavior.** Use the production entry point and real
+  in-repo collaborators. Follow the [integration verification](integration-testing.md) guidance.
 
-For a wider audit of an unfamiliar system, invoke
-`/skill:documenting-system-architecture`.
-
-### Compose, do not accumulate
-
-Prefer a mechanism that lets the next change be additive too. Each row says
-how units combine, not merely when the pattern applies.
+Use these mechanisms when they fit the boundary.
 
 | Mechanism | Composes by | Add a variant by | Breaks down when |
 | --- | --- | --- | --- |
@@ -56,63 +54,80 @@ how units combine, not merely when the pattern applies.
 | Ports/adapters | swapping edges | another adapter | core imports adapter |
 | Event | fan-out | another subscriber | you need the reply |
 
-The test of a composable unit:
-
-- **Closed under composition.** Same shape in, same shape out, so two of them
-  combine into a third of the same kind. A decorator that returns a different
-  type than it wraps composes once and then stops.
-- **Additive.** A second variant needs no edit to the first, and no edit to
-  the caller.
-- **Isolated.** Testable with no I/O and no global state, which is what makes
-  the no-mock integration test at Stage 7 possible rather than painful.
-- **Order-independent, or explicitly ordered.** If order matters, the spec
-  says so and says why.
-
-These anti-patterns destroy composability. Name one explicitly when you
-reject it:
-
-- a flag parameter selecting behaviour inside a function, instead of two
-  composable units
-- hidden global or package-level state, which makes two instances interfere
-- an interface with many methods, so every implementation carries weight it
-  does not use
-- inheritance or embedding used for reuse, which fixes behaviour at compile
-  time instead of at composition time
-- a new abstraction with one implementation and no second planned
-- an event used where a function call would do, for "decoupling"
+Explain the cost of any rejected design that matters to this change. Common
+costs include mode flags, hidden shared state, and wide interfaces. Also look
+for inheritance that fixes how units combine and abstractions with one use.
+Explain why a call needs asynchronous delivery before introducing an event.
 
 ## 2. Data models
 
-Only entities this change touches.
+Give each changed entity a heading with `New`, `Modified`, or `Removed` and
+the exact type or table name. Show the relevant fields in fenced **Before**
+and **After** blocks. Use the project’s language or schema syntax. Include
+types, nullability, defaults, and constraints when they affect compatibility.
+Show the invariant in the code or schema where possible. Name the component
+that enforces it.
 
-| Entity | Change | Fields | Compatibility |
-| --- | --- | --- | --- |
-| `Tunnel` | modified | `+authzMode string` | additive, default `legacy` |
-| `GrantRecord` | new | `id`, `subject`, `scope` | new table, no backfill |
-| `LegacyAcl` | removed | — | read path kept one release |
+For a new entity, show the **After** block. For a removed entity, show the
+**Before** block and explain the removal. If no model changes, write
+`No changes.` under the section.
 
-Rules:
+#### Modified `Tunnel`
 
-- Name the real type or table, not a description of it.
-- Mark each change `new`, `modified`, or `removed`.
-- State the compatibility consequence. "Additive" and "breaking" are
-  different conversations.
-- Say whether a migration is needed, and whether it is reversible.
+**Before**
+
+```go
+type Tunnel struct {
+    ID string `json:"id"`
+}
+```
+
+**After**
+
+```go
+type Tunnel struct {
+    ID        string `json:"id"`
+    AuthzMode string `json:"authzMode,omitempty"`
+}
+```
+
+- **Compatibility** Existing records omit `authzMode`. Read missing and empty
+  values as `legacy`. Verify that older readers accept the optional field.
+- **Invariant** The tunnel store returns a supported mode for every record.
+  It applies the default on read and rejects unsupported modes on write.
+- **Migration** No backfill is required.
+- **Rollback** Older readers can read records written by the new version.
 
 ## 3. Interfaces
 
-Every signature a caller can see: HTTP routes, exported functions, gRPC
-methods, CLI flags, published events.
+Give each changed contract a heading with its exact name. Apply this to
+exported functions, HTTP routes, gRPC methods, CLI options, and published events.
+Show the old and new contract in fenced **Before** and **After** blocks. Use
+the syntax a caller sees. Include visible error, payload, or default changes.
+If the interface accepts external input, state where validation happens and
+what a caller sees when input fails validation.
 
-| Interface | Before | After | Breaking | Consumers |
-| --- | --- | --- | --- | --- |
-| `GET /v1/tunnels/{id}` | `acl` | `authz` | yes | 2 (UI, CLI) |
-| `ResolveTarget(opts)` | `(string)` | `(string, error)` | yes | 7 sites |
-| `tunnel.granted` | — | new event | no | none yet |
+Start a new contract's heading with `New` and show the **After** block.
+Start a removed contract's heading with `Removed` and show the **Before**
+block and how callers move off it. If no interface changes, write `No changes.`.
 
-Get the consumer count from the tools, not from memory: `lsp_navigation`
-references for code, `graphify query` for cross-module reach. A breaking
-change with an unknown blast radius is not specified yet.
+#### `ResolveTarget`
+
+**Before**
+
+```go
+func ResolveTarget(opts ResolveOptions) string
+```
+
+**After**
+
+```go
+func ResolveTarget(opts ResolveOptions) (string, error)
+```
+
+- **Breaking** Yes. Callers must handle the error return.
+- **Consumers** 7 in-repo call sites. Cite the reference search and list the
+  affected files. If consumers exist outside the repository, state what you verified.
 
 ## 4. Folder structure
 
@@ -136,16 +151,47 @@ contradiction is visible here and nowhere else.
 
 ## 5. Workflows
 
-Mermaid `sequenceDiagram` blocks, which render in the GitHub issue body.
-Cover the happy path plus the failure and edge flows that the data model or
-interface changes above actually introduce.
+Use Mermaid `sequenceDiagram` blocks so GitHub renders the workflows in the
+issue. Show the main path and the relevant failure and edge cases.
+
+If a write can stop partway, repeat, or overlap another attempt, show the paths
+that apply. State how the system identifies the same operation. Show what is
+durable after a partial write and how a retry reaches the expected end state.
+If two attempts can overlap, show who owns the shared write and what each
+caller receives. Record those outcomes in the behaviour criteria.
+
+If the change carries production rollout risk, name the rollout owner and
+the signals that show the rollout is healthy. State the conditions for stopping
+or rolling it back and how to restore service.
+
+## Implementation plan
+
+Put the work checklist in `## Plan` in the shared draft. Order the items so
+each one ends in a state you can verify. Under each item, give a command or
+observation under **Verify** and an expected result under **Expected**.
+Verify the result before you proceed to the next item.
+
+The analyzer checks the documented headings, contract fields, and basic
+Mermaid structure. Review the diagrams and the meaning of each field before
+approval.
+
+```markdown
+## Plan
+
+- [ ] Add a retry test for report creation.
+  - **Verify** Run the report integration test and count the saved reports.
+  - **Expected** Both attempts return the same report ID. One report exists.
+```
 
 ## Self-check before GATE 1
 
-- Is the seam named, and the call-site count stated — zero, or justified?
-- Is the unit closed under composition, so two of them make a third?
-- Could a second variant be added without editing the first or the caller?
-- Does every interface row have a consumer count from a tool?
-- Does the folder tree match the seam named in section 1?
-- Does each data-model row say whether it is breaking?
-- Could a reviewer rewrite a row to disagree with you? If not, it is prose.
+- Name the boundary and justify each existing caller that must change.
+- Explain how another variant can use the boundary and which order it needs.
+- Show before-and-after code for each change. For additions and removals,
+  show the side that exists.
+- Record model compatibility, migration, and rollback.
+- Record each breaking interface change and cite its consumer count.
+- Record who enforces each changed invariant and where input is validated.
+- If a write can retry, stop partway, or overlap, show its observable outcome.
+- Make sure that the folder tree and workflow diagrams match the design.
+- Give every plan item a verification step and an expected result.
