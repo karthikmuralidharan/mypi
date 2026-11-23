@@ -1,114 +1,119 @@
 #!/usr/bin/env bash
-# status.sh — `loop where`: what does the run state say, and does live
-# gh/JIRA/git evidence agree? Exists for two failure modes /loop kept
-# hitting on long sessions: (1) a resumed or post-compaction session has no
-# memory of which stage it was in, and (2) the ship-gate re-arm mistake —
-# pushing again after a clear ship gate and treating the old pass as still
-# covering the new commits. Read-only: makes no gh/JIRA/git mutations.
-#
-# Named "where", not "status", so it cannot be confused with the existing
-# `sync status` (which transitions one JIRA ticket).
-#
-# Usage: status.sh [branch]
-# Exit:  0 if state and live facts agree (or nothing is tracked yet).
-#        1 if drift is found — see the "DRIFT" lines in the report.
+# Show the current run. A recorded pass is history until live checks agree.
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib/common.sh
 source "$HERE/lib/common.sh"
+# shellcheck source=lib/readiness.sh
+source "$HERE/lib/readiness.sh"
 require_config
 
-branch="${1:-$(git rev-parse --abbrev-ref HEAD)}"
+branch="${1:-$(git branch --show-current)}"
+echo "===== loop where (branch: $branch) ====="
+if ! state_file "$branch" >/dev/null; then
+    echo "No active loop run. Use loop start to begin."
+    exit 0
+fi
+echo "run: $(branch_run "$branch")"
 repo="$(gh_repo)"
 drift=0
 
-echo "===== loop where (branch: $branch) ====="
+report_gate() {
+    local gate="$1" note time
+    note="$(state_read ".gate$gate.note" '' "$branch")"
+    time="$(state_read ".gate$gate.at" '' "$branch")"
+    printf 'gate %s: PASSED at %s%s\n' "$gate" "$time" "${note:+ ($note)}"
+}
 
-# --- gates -----------------------------------------------------------------
-for n in 1 2; do
-    approved="$(state_read ".gate${n}.approved" false "$branch")"
-    if [ "$approved" = "true" ]; then
-        note="$(state_read ".gate${n}.note" "" "$branch")"
-        at="$(state_read ".gate${n}.at" "" "$branch")"
-        if [ -n "$note" ]; then
-            echo "gate $n: PASSED at $at ($note)"
-        else
-            echo "gate $n: PASSED at $at"
-        fi
-    else
-        echo "gate $n: NOT recorded"
-    fi
-done
+hash=""
+scope=""
+if [ "$(state_read '.gate1.approved' false "$branch")" != true ]; then
+    echo "gate 1: not recorded"
+elif hash="$(approved_spec_hash "$branch" 2>/dev/null)"; then
+    report_gate 1
+    echo "approved spec: $(state_read '.gate1.specFile' '' "$branch") ($hash)"
+else
+    echo "gate 1: STALE -- approved spec changed or is missing"
+    drift=1
+fi
+if [ "$(state_read '.gate2.approved' false "$branch")" != true ]; then
+    echo "gate 2: not recorded"
+elif scope="$(approved_ticket_scope "$branch" 2>/dev/null)"; then
+    report_gate 2
+else
+    echo "gate 2: STALE -- approved spec, repository, or Jira config differs"
+    drift=1
+fi
 
-# --- tracked GH issue --------------------------------------------------------
 issue="$(state_read '.issue' '' "$branch")"
-if [ -n "$issue" ]; then
-    live=""
-    live="$(gh issue view "${issue#\#}" --repo "$repo" --json state,title 2>/dev/null)" || live=""
-    if [ -n "$live" ]; then
-        echo "issue: $issue ($(jq -r .state <<<"$live")) -- $(jq -r .title <<<"$live")"
-    else
-        echo "issue: $issue -- DRIFT: not found on GitHub (deleted, or wrong repo config?)"
-        drift=1
-    fi
-else
-    echo "issue: not tracked"
-fi
-
-# --- tracked JIRA key --------------------------------------------------------
 jira="$(state_read '.jira' '' "$branch")"
-if [ -n "$jira" ]; then
-    body=""
-    body="$(jira_curl GET "/issue/${jira}" -G --data-urlencode "fields=status" 2>/dev/null)" || body=""
-    if [ -n "$body" ]; then
-        echo "jira: $jira ($(jq -r '.fields.status.name // "unknown"' <<<"$body"))"
-    else
-        echo "jira: $jira -- DRIFT: not found in JIRA (deleted, or wrong key?)"
-        drift=1
-    fi
-else
-    echo "jira: not tracked"
-fi
-
-# --- PR: live vs. recorded ----------------------------------------------------
-recorded_pr="$(state_read '.pr' '' "$branch")"
-live_pr=""
-live_pr="$(gh pr view "$branch" --repo "$repo" --json number,state,url 2>/dev/null)" || live_pr=""
-if [ -n "$live_pr" ]; then
-    live_n="$(jq -r .number <<<"$live_pr")"
-    live_state="$(jq -r .state <<<"$live_pr")"
-    live_url="$(jq -r .url <<<"$live_pr")"
-    echo "pr: #$live_n ($live_state) $live_url"
-    if [ -n "$recorded_pr" ] && [ "$recorded_pr" != "$live_n" ]; then
-        echo "  DRIFT: state recorded pr #$recorded_pr, live PR for this branch is #$live_n"
-        drift=1
-    fi
-elif [ -n "$recorded_pr" ]; then
-    echo "pr: state recorded #$recorded_pr, but no live PR found for this branch -- DRIFT (closed and gh can't resolve it this way, or branch renamed?)"
+if [ -z "$issue" ]; then
+    echo "issue: not tracked"
+elif ! github="$(gh issue view "${issue#\#}" --repo "$repo" --json number,state,title,body 2>/dev/null)"; then
+    echo "issue: $issue -- UNAVAILABLE: could not read from GitHub"
+    drift=1
+elif [ -n "$scope" ] && ! approved_parent "$scope" "$hash" "$issue" "$branch" "$github" >/dev/null 2>&1; then
+    echo "issue: $issue -- DRIFT: approved issue title or body differs"
     drift=1
 else
-    echo "pr: none open for this branch"
+    echo "issue: $issue ($(jq -r '.state' <<<"$github")) -- $(jq -r '.title' <<<"$github")"
+fi
+if [ -z "$jira" ]; then
+    echo "jira: not tracked"
+elif ! jira_data="$(jira_issue_snapshot "$jira" 2>/dev/null)"; then
+    echo "jira: $jira -- UNAVAILABLE: could not read Jira issue"
+    drift=1
+elif [ -n "$scope" ] && ! jira_mirror_matches "$repo" "${issue#\#}" "$(jq -r '.epic' <<<"$scope")" Story "$jira_data"; then
+    echo "jira: $jira -- DRIFT: mirror no longer belongs to the approved issue and epic"
+    drift=1
+else
+    echo "jira: $jira ($(jq -r '.fields.status.name // "unknown"' <<<"$jira_data"))"
 fi
 
-# --- ship-gate freshness -------------------------------------------------------
-last_pass="$(state_read '.lastShipGatePassCommit' '' "$branch")"
-if [ -n "$last_pass" ]; then
-    tip="$(git rev-parse "$branch" 2>/dev/null || true)"
-    if [ "$tip" = "$last_pass" ]; then
-        echo "ship-gate: clear as of $last_pass (current tip -- nothing pushed since)"
+binding="$(state_read '.prBinding' '' "$branch")"
+live_pr=""
+current_run=""
+if [ "$drift" -eq 0 ] && [ -n "$scope" ] && [ -n "$issue" ] && [ -n "$jira" ]; then
+    current_run="$(run_fingerprint "$branch" "$scope" "$hash" "${issue#\#}" "$jira")"
+fi
+if [ -z "$binding" ]; then
+    echo "pr: not bound"
+elif [ -z "$current_run" ] || [ "$(jq -r '.run' <<<"$binding")" != "$current_run" ]; then
+    echo "pr: STALE -- bind the PR for the current approval"
+    drift=1
+else
+    recorded_pr="$(jq -er '.number' <<<"$binding")"
+    if ! live_pr="$(pr_snapshot "$repo" "$recorded_pr" 2>/dev/null)"; then
+        echo "pr: #$recorded_pr -- UNAVAILABLE: could not read from GitHub"
+        live_pr=""
+        drift=1
+    elif ! pr_binding_matches "$binding" "$branch" "$jira" "$live_pr"; then
+        echo "pr: #$recorded_pr -- DRIFT: current repository, base, branch, or issue differs from the binding"
+        drift=1
     else
-        ahead="$(git rev-list --count "${last_pass}..${branch}" 2>/dev/null || echo '?')"
-        echo "ship-gate: DRIFT -- $ahead commit(s) on $branch since the last clear pass ($last_pass). Re-run: loop ship-gate"
+        echo "pr: #$recorded_pr ($(jq -r '.state' <<<"$live_pr")) $(jq -r '.url' <<<"$live_pr")"
+    fi
+fi
+
+policy="$(state_read '.shipPass' '' "$branch")"
+if [ -z "$policy" ]; then
+    echo "ship-gate: no recorded pass"
+else
+    last_pass="$(jq -r '.head // empty' <<<"$policy")"
+    echo "ship-gate: last passed at $last_pass"
+    if [ "$drift" -ne 0 ] || [ -z "$binding" ] || [ -z "$live_pr" ] ||
+        [ "$(jq -r '.run // empty' <<<"$policy")" != "$current_run" ] ||
+        ! jq -e --argjson binding "$binding" '.binding == $binding' <<<"$policy" >/dev/null; then
+        echo "ship-gate: DRIFT -- approval, ticket, or PR binding differs from the recorded pass"
+        drift=1
+    elif [ "$(jq -r '.state' <<<"$live_pr")" = MERGED ]; then
+        echo "ship-gate: PR merged"
+    elif pr_ready_now "$branch" "$jira" "$binding" "$policy" "$live_pr"; then
+        echo "ship-gate: ready at $last_pass (live GitHub policy and recorded evidence checked)"
+    else
+        echo "ship-gate: DRIFT -- live checks or commit evidence differ from the recorded pass"
         drift=1
     fi
-else
-    echo "ship-gate: never recorded as clear on this branch"
 fi
 
-echo "==========================================="
-if [ "$drift" -eq 0 ]; then
-    log "no drift found"
-else
-    warn "drift found -- see the DRIFT lines above"
-fi
 exit "$drift"

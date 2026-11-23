@@ -16,7 +16,7 @@ FISH_CONFD="$HOME/.config/fish/conf.d"
 }
 
 echo "==> config"
-for f in settings.json models.json mcp.json AGENTS.md; do
+for f in settings.json models.json mcp.json AGENTS.md pi-fff.json; do
   if [[ -f "$A/$f" ]]; then
     cp "$A/$f" "$REPO/config/$f"
     echo "    config/$f"
@@ -94,12 +94,18 @@ shopt -u nullglob
 echo "==> my skills (allowlist: manifests/my-skills.txt)"
 while read -r s; do
   [[ -z "$s" || "$s" == \#* ]] && continue
-  if [[ -d "$A/skills/$s" ]]; then
+  skills_dir="$A/skills"
+  if [[ "$s" == shared:* ]]; then
+    s="${s#shared:}"
+    skills_dir="$AGENTS_HOME/skills"
+  fi
+  [[ -n "$s" ]] || continue
+  if [[ -d "$skills_dir/$s" ]]; then
     rm -rf "$REPO/skills/$s"
-    cp -R "$A/skills/$s" "$REPO/skills/$s"
+    cp -R "$skills_dir/$s" "$REPO/skills/$s"
     echo "    skills/$s"
   else
-    echo "    WARN: $s listed in manifest but missing from $A/skills/" >&2
+    echo "    WARN: $s listed in manifest but missing from $skills_dir/" >&2
   fi
 done <"$REPO/manifests/my-skills.txt"
 

@@ -3,29 +3,31 @@
 #
 # Subcommands:
 #   setup            interactive first-time config -> .loop/config.json
+#   start [--new]    -> start a distinct run on the current branch
 #   gate-pass  ...    -> record a passed hard gate (1 or 2) into run state
 #   find-epic  ...    -> find-epic.sh  (search parent epics to confirm)
 #   sync       ...    -> sync.sh       (GH<->JIRA traceability)
-#   ci-watch   ...    -> ci-watch.sh   (tail CI until it settles)
-#   pr-check   ...    -> pr-check.sh   (rearming gate: unresolved review threads)
-#   ship-gate  ...    -> ship-gate.sh  (ci-watch + pr-check as one call/one exit code)
+#   name-branch SLUG  -> rename a local branch using the recorded Jira ticket
+#   check-names TITLE -> check the current branch and proposed PR title
+#   bind-pr          -> bind an open PR to the approved run
+#   record-evidence  -> record tests or review for the current commit
+#   state-path        -> print the current branch state path
+#   ship-gate  ...    -> ship-gate.sh  (CI and review for the current PR head)
 #   analyze    ...    -> analyze.sh    (spec/plan/sub-issue consistency; reports only)
-#   replan     ...    -> replan.sh     (revise the spec after coding started)
 #   where            -> status.sh (run state vs. live gh/JIRA/git facts)
 #   config           print resolved config
 #
 # The dot-folder .loop/ is fully local (gitignored). Nothing repo-specific
 # is baked into these scripts — the JIRA project/site and GH repo come from
-# config written by `setup`. Run state lives in .loop/state/<branch>.json.
+# config written by `setup`. Run state lives under .loop/state/v3/.
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib/common.sh
 source "$HERE/lib/common.sh"
 
-repo_root() { git rev-parse --show-toplevel 2>/dev/null || pwd; }
-
 cmd_setup() {
-    local root; root="$(repo_root)"
+    local root="$worktree_root"
+    [ -n "$root" ] && [ ! -L "$root/.loop" ] || die "run setup inside the project worktree"
     local dir="$root/.loop"
     mkdir -p "$dir/state"
     log "config dir: $dir"
@@ -36,9 +38,8 @@ cmd_setup() {
     [ -n "$gh_repo" ] || die "GitHub repo is required"
 
     # 2. Atlassian auth (verify before writing anything).
-    local site="${ATLASSIAN_SITE:-swicloud.atlassian.net}"
-    read -r -p "Atlassian site [$site]: " ans; site="${ans:-$site}"
-    JIRA_SITE="$site"; JIRA_API="https://${site}/rest/api/3"; export JIRA_SITE JIRA_API
+    require_jira_site
+    local site="$JIRA_SITE"
     local who; who="$(jira_curl GET /myself | jq -r '.displayName // empty')" || true
     [ -n "$who" ] || die "Atlassian auth failed for $site (check ATLASSIAN_EMAIL/ATLASSIAN_API_TOKEN)"
     log "Atlassian auth OK as: $who"
@@ -46,7 +47,7 @@ cmd_setup() {
     # 3. JIRA project key + a confirming search so a typo is caught now.
     local proj=""
     while [ -z "$proj" ]; do
-        read -r -p "JIRA project key (e.g. SWONE): " proj
+        read -r -p "Jira project key: " proj || die "setup canceled"
         if [ -n "$proj" ]; then
             local name; name="$(JIRA_PROJECT="$proj" jira_curl GET "/project/$proj" 2>/dev/null | jq -r '.name // empty' || true)"
             if [ -z "$name" ]; then warn "project '$proj' not found/visible — try again"; proj=""; else log "project $proj = $name"; fi
@@ -66,13 +67,26 @@ cmd_setup() {
         log "added .loop/ to .gitignore"
     fi
 
-    log "setup complete. Try: scripts/loop/loop find-epic \"<keywords>\""
+    log "setup complete. Try: loop find-epic \"<keywords>\""
 }
 
 cmd_config() {
     require_config
     jq . "$_cfg"
     echo "resolved: site=$JIRA_SITE project=$JIRA_PROJECT gh=$(cfg '.gh.repo')"
+}
+
+cmd_start() {
+    require_config
+    if [ "$#" -eq 0 ]; then
+        if state_file >/dev/null; then
+            branch_run "$(git branch --show-current)"
+            return
+        fi
+    else
+        [ "$#" -eq 1 ] && [ "$1" = --new ] || die "usage: loop start [--new]"
+    fi
+    start_run
 }
 
 # gate-pass N [--note TEXT] — record that a human approved hard gate N (1 or
@@ -82,20 +96,57 @@ cmd_config() {
 # script check, not only an instruction the agent must remember across a
 # long session.
 cmd_gate_pass() {
-    local n="${1:?usage: loop gate-pass <1|2> [--note TEXT]}"
+    local n="${1:?usage: loop gate-pass 1 --spec-file PATH | 2 --scope-file PATH}"
     shift || true
     case "$n" in
-        1 | 2) ;;
+        1) ;;
+        2) ;;
         *) die "gate-pass: N must be 1 or 2, got '$n'" ;;
     esac
-    local note=""
+    local note="" spec_file="" spec_hash="" scope_file="" scope='null'
     while [ $# -gt 0 ]; do
         case "$1" in
         --note) note="$2"; shift 2 ;;
+        --spec-file) spec_file="$2"; shift 2 ;;
+        --scope-file) scope_file="$2"; shift 2 ;;
         *) die "gate-pass: unexpected arg: $1" ;;
         esac
     done
-    state_set_json "gate${n}" "$(jq -n --arg note "$note" '{approved:true, at:(now|todate), note:$note}')"
+    if [ "$n" = 1 ]; then
+        require_config
+        [ -n "$spec_file" ] && [ -z "$scope_file" ] || die "gate 1 requires --spec-file"
+        [ -f "$spec_file" ] || die "spec file not found: $spec_file"
+        spec_file="$(cd "$(dirname "$spec_file")" && pwd)/$(basename "$spec_file")"
+        spec_hash="$(git hash-object --no-filters -- "$spec_file")"
+        if ! state_file >/dev/null; then
+            start_run >/dev/null
+        fi
+    else
+        [ -n "$scope_file" ] && [ -z "$spec_file" ] || die "gate 2 requires --scope-file"
+        spec_hash="$(approved_spec_hash)"
+        require_config
+        require_jira_site
+        scope="$(jq -cse --arg repo "$(gh_repo)" --arg site "$JIRA_SITE" --arg project "$JIRA_PROJECT" '
+            def text: type == "string" and test("[^[:space:]]") and (test("[\\r\\n]") | not);
+            def number_id: type == "number" and . > 0 and . == floor;
+            def child: if type == "string" then text else type == "object" and (.title | text) and (.issue | number_id) end;
+            select(length == 1) | .[0] |
+            select(type == "object" and .repo == $repo and
+                has("issue") and (.issue == null or (.issue | number_id)) and
+                (if .issue == null then .baseBodyHash == null
+                 else (.baseBodyHash | type == "string" and test("^([a-f0-9]{40}|[a-f0-9]{64})$")) end) and
+                (.title | text) and (.epic | type == "string" and test("^[A-Z][A-Z0-9_]*-[0-9]+$")) and
+                (.subissues | type == "array" and all(.[]; child))) |
+            .subissues |= map(if type == "string" then {title:.,issue:null} else {title,issue} end) |
+            select(.subissues | length == (map(.title) | unique | length) and
+                ([.[].issue | select(. != null)] | length == (unique | length))) |
+            {repo, issue, baseBodyHash, title, epic, subissues, site:$site, project:$project}
+        ' "$scope_file")" || die "invalid scope file or repository mismatch"
+    fi
+    state_set_json "gate${n}" "$(jq -n --arg note "$note" --arg file "$spec_file" --arg hash "$spec_hash" --argjson scope "$scope" '
+        {approved:true, at:(now|todate), note:$note, specHash:$hash} +
+        (if $scope == null then {specFile:$file} else {scope:$scope} end)
+    ')"
     if [ -n "$note" ]; then
         log "gate $n recorded as passed ($note)"
     else
@@ -103,20 +154,107 @@ cmd_gate_pass() {
     fi
 }
 
+cmd_name_branch() (
+    require_config
+    [ "$#" -eq 1 ] || die "usage: loop name-branch <slug>"
+    local slug="$1" branch ticket target
+    [[ "$slug" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]] || die "use a lowercase, hyphen-separated branch slug"
+    branch="$(git branch --show-current)"
+    [ -n "$branch" ] || die "check out the local work branch"
+    state_file "$branch" >/dev/null || die "no active loop run; run loop start"
+    [ "$(git branch --show-current)" = "$branch" ] || die "the checked out branch changed"
+    ticket="$(require_jira_ticket "$branch")"
+    if jira_branch_matches "$branch" "$ticket"; then
+        if [ "$(state_read '.renameTo' '' "$branch")" = "$branch" ]; then
+            state_set branch "$branch" "$branch"
+            state_set_json renameTo null "$branch"
+        fi
+        printf '%s\n' "$branch"
+        return
+    fi
+
+    if [ -n "$(state_read '.pr' '' "$branch")" ] ||
+        [ -n "$(git for-each-ref --format='%(upstream)' "refs/heads/$branch")" ] ||
+        git for-each-ref --format='%(refname:strip=3)' refs/remotes | grep -Fx -- "$branch" >/dev/null; then
+        die "branch $branch is already tracked or has a recorded PR; use a new local branch for $ticket"
+    fi
+
+    target="$ticket-$slug"
+    git show-ref --verify --quiet "refs/heads/$target" && die "branch already exists: $target"
+    state_set renameTo "$target" "$branch"
+    if ! git branch -m -- "$branch" "$target"; then
+        state_set_json renameTo null "$branch"
+        die "could not rename $branch to $target"
+    fi
+    state_set branch "$target" "$target"
+    state_set_json renameTo null "$target"
+    printf '%s\n' "$target"
+)
+
+cmd_check_names() {
+    require_config
+    [ "$#" -eq 1 ] || die "usage: loop check-names '<PR title>'"
+    local branch ticket
+    branch="$(git branch --show-current)"
+    [ -n "$branch" ] || die "check out the local work branch"
+    ticket="$(require_jira_ticket "$branch")"
+    jira_branch_matches "$branch" "$ticket" || die "branch $branch must start with $ticket; run loop name-branch <slug>"
+    jira_title_matches "$1" "$ticket" || die "PR title must start with $ticket"
+    log "branch and PR title match $ticket"
+}
+
+cmd_record_evidence() {
+    require_config
+    local kind="${1:?use tests or review}" head="" file="" hash run
+    shift
+    case "$kind" in tests | review) ;; *) die "use tests or review" ;; esac
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --commit) head="${2:?--commit requires a SHA}"; shift 2 ;;
+            --file) file="${2:?--file requires a path}"; shift 2 ;;
+            *) die "unexpected evidence argument: $1" ;;
+        esac
+    done
+    [ -n "$head" ] && [ "$head" = "$(git rev-parse HEAD)" ] || die "record evidence against the full current commit SHA"
+    [ -f "$file" ] || die "supply the evidence JSON file with --file"
+    file="$(cd "$(dirname "$file")" && pwd)/$(basename "$file")"
+    hash="$(git hash-object --no-filters -- "$file")"
+    jq -se --arg kind "$kind" '
+        def text: type == "string" and test("[^[:space:]]");
+        length == 1 and (.[0] | .status == "pass" and (.summary | text) and
+            (if $kind == "tests" then (.commands | type == "array" and length > 0 and all(.[]; text))
+             else (.reviewer | text) end))
+    ' "$file" >/dev/null || die "invalid $kind evidence; see the operations guide"
+    [ "$hash" = "$(git hash-object --no-filters -- "$file")" ] || die "evidence changed while checking it"
+    run="$(run_identity "$(git branch --show-current)")"
+    state_set_json "evidence_$kind" "$(jq -n --arg head "$head" --arg file "$file" --arg sha "$hash" --arg run "$run" \
+        '{head:$head,file:$file,sha:$sha,run:$run}')"
+    log "recorded $kind evidence for $head"
+}
+
 sub="${1:-}"; shift || true
 case "$sub" in
+    start | gate-pass | name-branch | record-evidence)
+        if [ -z "${LOOP_WRITE_LOCK:-}" ]; then
+            exec python3 "$HERE/lib/with-lock.py" "$HERE/loop" "$sub" "$@"
+        fi ;;
+esac
+case "$sub" in
     setup)     cmd_setup "$@";;
+    start)     cmd_start "$@";;
     gate-pass) cmd_gate_pass "$@";;
     config)    cmd_config "$@";;
     find-epic) exec "$HERE/find-epic.sh" "$@";;
     sync)      exec "$HERE/sync.sh" "$@";;
-    ci-watch)  exec "$HERE/ci-watch.sh" "$@";;
-    pr-check)  exec "$HERE/pr-check.sh" "$@";;
+    bind-pr)   exec "$HERE/sync.sh" bind-pr "$@";;
+    record-evidence) cmd_record_evidence "$@";;
+    name-branch) cmd_name_branch "$@";;
+    check-names) cmd_check_names "$@";;
+    state-path) state_file || die "no active loop run; run loop start";;
     ship-gate) exec "$HERE/ship-gate.sh" "$@";;
     analyze)   exec "$HERE/analyze.sh" "$@";;
-    replan)    exec "$HERE/replan.sh" "$@";;
     where)     exec "$HERE/status.sh" "$@";;
     ""|-h|--help)
-        sed -n '2,21p' "$HERE/loop";;
-    *) die "unknown subcommand: $sub (try: setup, gate-pass, find-epic, sync, ci-watch, pr-check, ship-gate, where, config)";;
+        sed -n '2,/^set -euo pipefail/{ /^set -euo pipefail/d; p; }' "$HERE/loop";;
+    *) die "unknown subcommand: $sub (run loop --help)";;
 esac

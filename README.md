@@ -39,9 +39,10 @@ cd mypi && ./bootstrap.sh
 `*.pre-bootstrap`. It:
 
 1. writes `config/` into `~/.pi/agent/`
-2. installs my authored skills into `~/.pi/agent/skills/`
-3. runs `pi install` for every entry in `settings.json` `packages[]`, which
-   regenerates the 36 `ce-*` skills and all 67 `agents/*.md`
+2. installs `loop` in `~/.agents/skills/` for Pi and other agents. It installs
+   the other authored skills in `~/.pi/agent/skills/`.
+3. installs the packages in `settings.json`. Pi uses the resource filters in
+   that file to decide which extensions and skills to load.
 4. re-clones the third-party skills recorded in `manifests/agents-skill-lock.json`
 
 Flags: `--config` for config only (skip installs), `--force` to skip backups.
@@ -86,7 +87,7 @@ git commit -am "add pi-lens, bump default model"
   config: different lifecycle, changes every session, contains work context.
   Excluded for now; see the commit history for how to add it later if that
   call changes.
-- **Plugin content.** 36 `ce-*` skills and 67 agents are regenerated from
-  `settings.json` `packages[]` rather than vendored, to keep diffs clean.
+- **Plugin content.** MyPi records package sources in `settings.json`.
+  Pi installs their files when you restore the configuration.
 - **Secrets.** `auth.json` is gitignored and was never copied in. Verified with
   a pattern scan before the first commit.

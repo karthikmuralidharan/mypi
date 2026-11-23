@@ -22,21 +22,32 @@
           }
         },
         {
-          "id": "claude-haiku-4-5",
-          "reasoning": true,
-          "input": [
-            "text",
-            "image"
-          ],
-          "contextWindow": 200000,
-          "maxTokens": 64000,
+          "id": "claude-fable-5-2",
+          "name": "Claude Fable 5.2",
+          "contextWindow": 1000000,
+          "maxTokens": 128000,
           "cost": {
-            "input": 1.0,
-            "output": 5.0,
-            "cacheRead": 0.1,
-            "cacheWrite": 1.25
+            "input": 8.0,
+            "output": 40.0,
+            "cacheRead": 0.2,
+            "cacheWrite": 10.0
           },
-          "name": "Claude Haiku 4.5",
+          "promptCache": {
+            "short": 300,
+            "long": 3600
+          }
+        },
+        {
+          "id": "claude-fable-5-2-fast",
+          "name": "Claude Fable 5.2",
+          "contextWindow": 1000000,
+          "maxTokens": 128000,
+          "cost": {
+            "input": 16.0,
+            "output": 80.0,
+            "cacheRead": 0.4,
+            "cacheWrite": 20.0
+          },
           "promptCache": {
             "short": 300,
             "long": 3600
@@ -54,27 +65,6 @@
             "cacheRead": 0.01,
             "cacheWrite": 0.125
           },
-          "promptCache": {
-            "short": 300,
-            "long": 3600
-          }
-        },
-        {
-          "id": "claude-opus-4-8",
-          "reasoning": true,
-          "input": [
-            "text",
-            "image"
-          ],
-          "contextWindow": 1000000,
-          "maxTokens": 128000,
-          "cost": {
-            "input": 5.0,
-            "output": 25.0,
-            "cacheRead": 0.5,
-            "cacheWrite": 6.25
-          },
-          "name": "Claude Opus 4.8",
           "promptCache": {
             "short": 300,
             "long": 3600
@@ -331,6 +321,36 @@
             "output": 5.0,
             "cacheRead": 0.05,
             "cacheWrite": 1.25
+          },
+          "promptCache": {
+            "short": 300
+          }
+        },
+        {
+          "id": "gpt-6.2-astra",
+          "name": "GPT-6.2 Astra",
+          "contextWindow": 922000,
+          "maxTokens": 128000,
+          "cost": {
+            "input": 8.0,
+            "output": 40.0,
+            "cacheRead": 0.4,
+            "cacheWrite": 10.0
+          },
+          "promptCache": {
+            "short": 300
+          }
+        },
+        {
+          "id": "gpt-6.2-sol",
+          "name": "GPT-6.2 Sol",
+          "contextWindow": 922000,
+          "maxTokens": 128000,
+          "cost": {
+            "input": 2.0,
+            "output": 10.0,
+            "cacheRead": 0.1,
+            "cacheWrite": 2.5
           },
           "promptCache": {
             "short": 300

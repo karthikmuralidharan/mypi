@@ -47,7 +47,7 @@ install_file() {
 }
 
 echo "==> config -> $A"
-for f in settings.json models.json mcp.json AGENTS.md; do
+for f in settings.json models.json mcp.json AGENTS.md pi-fff.json; do
   install_file "$REPO/config/$f" "$A/$f"
 done
 
@@ -128,11 +128,24 @@ fi
 echo "==> my skills"
 while read -r s; do
   [[ -z "$s" || "$s" == \#* ]] && continue
-  if [[ -d "$REPO/skills/$s" ]]; then
-    rm -rf "$A/skills/$s"
-    mkdir -p "$A/skills"
-    cp -R "$REPO/skills/$s" "$A/skills/$s"
-    echo "    $A/skills/$s"
+  skills_dir="$A/skills"
+  if [[ "$s" == shared:* ]]; then
+    s="${s#shared:}"
+    skills_dir="$AGENTS_HOME/skills"
+  fi
+  [[ -n "$s" && -d "$REPO/skills/$s" ]] || continue
+  dest="$skills_dir/$s"
+  rm -rf "$dest"
+  mkdir -p "$skills_dir"
+  cp -R "$REPO/skills/$s" "$dest"
+  echo "    $dest"
+
+  legacy="$A/skills/$s"
+  if [[ "$skills_dir" == "$AGENTS_HOME/skills" && ( -e "$legacy" || -L "$legacy" ) ]]; then
+    mkdir -p "$A/backups"
+    backup="$(mktemp -d "$A/backups/shared-skill.XXXXXXXX")"
+    mv "$legacy" "$backup/"
+    echo "    backed up the old Pi copy to $backup/$s"
   fi
 done <"$REPO/manifests/my-skills.txt"
 
@@ -142,10 +155,9 @@ if [[ $CONFIG_ONLY -eq 1 ]]; then
   exit 0
 fi
 
-echo "==> pi packages (regenerates plugin skills + agents)"
-# settings.json packages[] is the source of truth. Each entry is already a
-# fully-qualified spec, e.g. npm:pi-lens or git:github.com/user/repo@tag.
-jq -r '.packages[]?' "$REPO/config/settings.json" | while read -r p; do
+echo "==> pi packages"
+# Use the source from each package entry. Pi keeps the resource filters from settings.json.
+jq -r '.packages[]? | if type == "object" then .source else . end' "$REPO/config/settings.json" | while read -r p; do
   [[ -z "$p" ]] && continue
   echo "    pi install $p"
   pi install "$p" || echo "    WARN: failed to install $p — continuing" >&2

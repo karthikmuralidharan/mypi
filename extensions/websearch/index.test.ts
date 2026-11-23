@@ -35,11 +35,25 @@ function writeConfig(dir: string, json: string): void {
 }
 
 describe("loadResearchConfig", () => {
-	test("defaults to the aperture-responses registry reference", () => {
+	test("defaults to the current OpenAI Responses registry reference", () => {
 		withAgentDir((dir) => {
 			const cfg = loadResearchConfig(dir);
-			expect(cfg.model).toBe("aperture-responses/gpt-5.6-luna");
+			expect(cfg.model).toBe("openai/gpt-6.1-terra");
 			expect(cfg.timeoutMs).toBe(120_000);
+		});
+	});
+
+	test("the default model is configured for the Responses API", () => {
+		withAgentDir((dir) => {
+			const ref = parseModelRef(loadResearchConfig(dir).model);
+			if (!ref) throw new Error("Default model reference is invalid");
+			const config = JSON.parse(
+				fs.readFileSync(new URL("../../config/models.json", import.meta.url), "utf8"),
+			);
+			const provider = config.providers[ref.provider];
+			expect(provider).toBeDefined();
+			expect(provider.api).toBe("openai-responses");
+			expect(provider.models.some((model: { id: string }) => model.id === ref.id)).toBe(true);
 		});
 	});
 
@@ -55,23 +69,23 @@ describe("loadResearchConfig", () => {
 	test("a baseUrl key in websearch.json is inert", () => {
 		withAgentDir((dir) => {
 			writeConfig(dir, JSON.stringify({ baseUrl: "http://legacy.example" }));
-			expect(loadResearchConfig(dir).model).toBe("aperture-responses/gpt-5.6-luna");
+			expect(loadResearchConfig(dir).model).toBe("openai/gpt-6.1-terra");
 		});
 	});
 
 	test("broken JSON falls back to defaults", () => {
 		withAgentDir((dir) => {
 			writeConfig(dir, "{ not json");
-			expect(loadResearchConfig(dir).model).toBe("aperture-responses/gpt-5.6-luna");
+			expect(loadResearchConfig(dir).model).toBe("openai/gpt-6.1-terra");
 		});
 	});
 });
 
 describe("parseModelRef", () => {
 	test("splits on the first slash", () => {
-		expect(parseModelRef("aperture-responses/gpt-5.6-luna")).toEqual({
-			provider: "aperture-responses",
-			id: "gpt-5.6-luna",
+		expect(parseModelRef("openai/gpt-6.1-terra")).toEqual({
+			provider: "openai",
+			id: "gpt-6.1-terra",
 		});
 	});
 
@@ -85,10 +99,10 @@ describe("parseModelRef", () => {
 // Minimal registry-double model; only the fields resolution reads matter.
 function fakeModel(over: Partial<Model<Api>> = {}): Model<Api> {
 	return {
-		id: "gpt-5.6-luna",
-		name: "gpt-5.6-luna",
+		id: "gpt-6.1-terra",
+		name: "gpt-6.1-terra",
 		api: "openai-responses",
-		provider: "aperture-responses",
+		provider: "openai",
 		baseUrl: "http://gw.example/v1",
 		reasoning: false,
 		input: ["text"],
@@ -109,14 +123,14 @@ function fakeRegistry(
 	};
 }
 
-const REF = "aperture-responses/gpt-5.6-luna";
+const REF = "openai/gpt-6.1-terra";
 const KNOWN = { [REF]: fakeModel() };
 
 describe("resolveResearchTarget", () => {
 	test("resolves endpoint and auth from the owning provider", async () => {
 		const target = await resolveResearchTarget(fakeRegistry(KNOWN), REF);
 		expect(target.endpoint.href).toBe("http://gw.example/v1/responses");
-		expect(target.modelId).toBe("gpt-5.6-luna");
+		expect(target.modelId).toBe("gpt-6.1-terra");
 		expect(target.headers["content-type"]).toBe("application/json");
 		expect(target.headers.authorization).toBe("Bearer test-key");
 	});

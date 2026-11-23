@@ -32,7 +32,7 @@ import { type RawResponse, renderResearch, shapeResearch } from "./shape";
 import { assertHttpUrl, bodyToText, capFetchText, FETCH_CAPS } from "./fetch";
 
 const AGENT_DIR = path.join(os.homedir(), ".pi", "agent");
-const DEFAULT_MODEL_REF = "aperture-responses/gpt-5.6-luna";
+const DEFAULT_MODEL_REF = "openai/gpt-6.1-terra";
 const DEFAULT_TIMEOUT_MS = 120_000;
 
 export interface ResearchConfig {
